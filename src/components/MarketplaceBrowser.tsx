@@ -9,7 +9,6 @@
 
 import { useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n/context";
-import { placeMarketplaceOrder } from "@/lib/actions/supplier";
 
 /** A product listing as returned by the supplier product catalogue. */
 export interface SupplierProduct {
@@ -63,6 +62,8 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
   const [submitting, setSubmitting] = useState(false);
   const [orderRef, setOrderRef] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [walletMsisdn, setWalletMsisdn] = useState("");
+  const [paymentInfo, setPaymentInfo] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -252,9 +253,12 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                     Order ref: <span className="font-bold">{orderRef}</span>
                   </p>
                 )}
+                {paymentInfo && (
+                  <p className="text-sm p-2 bg-surface-container rounded">{paymentInfo}</p>
+                )}
                 <p className="text-body-md text-on-surface-variant">{t("mkt.quote.respond")}</p>
                 <button
-                  onClick={() => { setSubmitted(false); setQuote([]); setQuoteOpen(false); setOrderRef(null); }}
+                  onClick={() => { setSubmitted(false); setQuote([]); setQuoteOpen(false); setOrderRef(null); setPaymentInfo(null); }}
                   className="mt-4 font-mono text-label-md border border-outline-variant px-4 py-2 uppercase hover:bg-surface-container transition-colors"
                 >
                   {t("mkt.quote.new")}
@@ -305,9 +309,24 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                         {submitError}
                       </div>
                     )}
+                    {paymentInfo && (
+                      <div className="text-sm p-2 bg-surface-container rounded">
+                        {paymentInfo}
+                      </div>
+                    )}
                     <div className="flex justify-between font-mono text-label-md text-on-surface uppercase">
                       <span>{t("mkt.quote.total")}</span>
                       <span>TZS {totalValue.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <label className="font-mono text-[10px] text-on-surface-variant uppercase">Payme wallet (charged on order)</label>
+                      <input
+                        value={walletMsisdn}
+                        onChange={(e) => setWalletMsisdn(e.target.value)}
+                        placeholder="+255..."
+                        className="mt-1 w-full px-3 py-2 border border-outline-variant bg-surface text-sm focus:outline-none focus:border-primary-container"
+                      />
+                      <p className="text-[10px] text-on-surface-variant mt-1">Payment held in escrow via Payme Africa until delivery.</p>
                     </div>
                     <button
                       onClick={async () => {
@@ -317,7 +336,8 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                         }
                         setSubmitting(true);
                         setSubmitError(null);
-                        // Group items by supplier
+                        setPaymentInfo(null);
+                        // Group items by supplier — checkout is per-supplier (escrow)
                         const bySupplier = new Map<string, typeof quote>();
                         for (const item of quote) {
                           const sid = item.product.supplierId;
@@ -325,34 +345,47 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                           list.push(item);
                           bySupplier.set(sid, list);
                         }
-                        // Place one order per supplier
                         let hasError = false;
-                        for (const [sellerId, items] of bySupplier) {
-                          const result = await placeMarketplaceOrder(
-                            items.map(i => ({
-                              catalogId: i.product.id,
-                              quantity: i.qty,
-                              unitPrice: i.product.unitPrice,
-                              productName: i.product.productName,
-                            })),
-                            buyerBranchId,
-                            sellerId
-                          );
-                          if (result.error) {
-                            setSubmitError(result.error);
+                        let lastRef: string | null = null;
+                        let lastPaymentMsg: string | null = null;
+                        for (const [, items] of bySupplier) {
+                          try {
+                            const res = await fetch("/api/marketplace/checkout", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                buyerBranchId,
+                                items: items.map(i => ({ catalogId: i.product.id, quantity: i.qty })),
+                                msisdn: walletMsisdn.trim() || undefined,
+                              }),
+                            });
+                            const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; payment?: { status: string; error?: string; message?: string } };
+                            if (!res.ok) {
+                              setSubmitError(json.error || `Checkout failed (${res.status})`);
+                              hasError = true;
+                              break;
+                            }
+                            if (json.orderRef || json.orderId) lastRef = json.orderRef || `ORD-${(json.orderId as string).slice(0,8).toUpperCase()}`;
+                            if (json.payment) {
+                              if (json.payment.status === "completed") lastPaymentMsg = "Payment completed.";
+                              else if (json.payment.status === "pending") lastPaymentMsg = json.payment.message || "Payment initiated — check your phone for the mobile money prompt.";
+                              else if (json.payment.error) lastPaymentMsg = `Payment failed: ${json.payment.error}`;
+                            }
+                          } catch (e) {
+                            setSubmitError(e instanceof Error ? e.message : "Checkout failed");
                             hasError = true;
                             break;
-                          } else if (result.orderId) {
-                            setOrderRef(`ORD-${result.orderId.slice(0, 8).toUpperCase()}`);
                           }
                         }
+                        if (lastRef) setOrderRef(lastRef);
+                        if (lastPaymentMsg) setPaymentInfo(lastPaymentMsg);
                         setSubmitting(false);
                         if (!hasError) setSubmitted(true);
                       }}
                       disabled={submitting}
                       className="w-full bg-ink-deep text-white font-mono text-label-md py-3 uppercase hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
-                      {submitting ? t("common.loading") : t("mkt.quote.submit")}
+                      {submitting ? t("common.loading") : "Place Order & Pay"}
                     </button>
                   </div>
                 )}
