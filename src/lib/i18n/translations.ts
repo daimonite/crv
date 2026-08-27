@@ -76,6 +76,8 @@ export const strings: Record<string, Record<Lang, string>> = {
   // ── Auth ──────────────────────────────────────────────────────────────────
   "auth.signin":        { EN: "Sign In",         SW: "Ingia" },
   "auth.signup":        { EN: "Sign Up",          SW: "Jisajili" },
+  "auth.noaccount":     { EN: "No account?",     SW: "Huna akaunti?" },
+  "auth.haveaccount":   { EN: "Have an account?", SW: "Una akaunti?" },
   "auth.email":         { EN: "Email Address",    SW: "Barua Pepe" },
   "auth.password":      { EN: "Password",         SW: "Nywila" },
   "auth.forgot":        { EN: "Forgot Password?", SW: "Umesahau Nywila?" },

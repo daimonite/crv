@@ -242,7 +242,7 @@ function AuthForm() {
                       {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>{t("auth.signin")} <span className="material-symbols-outlined text-[18px]">arrow_forward</span></>}
                     </button>
                     <p className="text-center font-body-sm text-body-sm text-on-surface-variant">
-                      No account?{" "}
+                      {t("auth.noaccount")}{" "}
                       <button type="button" onClick={() => setTab("signup")} className="text-primary hover:underline font-semibold">{t("auth.signup")}</button>
                     </p>
                   </form>
@@ -290,7 +290,7 @@ function AuthForm() {
                       {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>{t("auth.createaccount")} <span className="material-symbols-outlined text-[18px]">domain_add</span></>}
                     </button>
                     <p className="text-center font-body-sm text-body-sm text-on-surface-variant">
-                      Have an account?{" "}
+                      {t("auth.haveaccount")}{" "}
                       <button type="button" onClick={() => setTab("signin")} className="text-primary hover:underline font-semibold">{t("auth.signin")}</button>
                     </p>
                   </form>
