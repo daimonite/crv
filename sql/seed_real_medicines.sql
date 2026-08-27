@@ -1,29 +1,29 @@
 -- Seed real medicines + stock into Supabase
 -- Run this in Supabase Dashboard → SQL Editor (service_role)
--- Idempotent: uses ON CONFLICT DO NOTHING / UPDATE
+-- Idempotent: uses ON CONFLICT (id) with real UUIDs
 
--- 1) Master products (shared catalog)
+-- 1) Master products (shared catalog) — 20 real Tanzanian medicines
 INSERT INTO products (id, generic_name, brand_name, category, formulation, requires_prescription, barcode, default_cost_price, default_sale_price, updated_at) VALUES
-  ('prod-real-001', 'Amoxicillin 500mg', 'Amoxil', 'Antibiotics', 'Capsule', true, '6001001000011', 3200, 4500, NOW()),
-  ('prod-real-002', 'Paracetamol 500mg', 'Panadol', 'Analgesics', 'Tablet', false, '6001001000028', 1200, 2500, NOW()),
-  ('prod-real-003', 'Artemether/Lumefantrine 20/120mg', 'Coartem', 'Antimalarials', 'Tablet', true, '6001001000035', 4800, 6800, NOW()),
-  ('prod-real-004', 'Metformin 500mg', 'Glucophage', 'Diabetes Care', 'Tablet', true, '6001001000042', 4200, 5900, NOW()),
-  ('prod-real-005', 'Amoxicillin/Clavulanate 625mg', 'Augmentin', 'Antibiotics', 'Tablet', true, '6001001000059', 5500, 7800, NOW()),
-  ('prod-real-006', 'Cetirizine 10mg', 'Zyrtec', 'Antihistamines', 'Tablet', false, '6001001000066', 900, 1600, NOW()),
-  ('prod-real-007', 'Omeprazole 20mg', 'Losec', 'Digestive Health', 'Capsule', false, '6001001000073', 1800, 2800, NOW()),
-  ('prod-real-008', 'Salbutamol Inhaler 100mcg', 'Ventolin', 'Respiratory', 'Inhaler', true, '6001001000080', 9500, 12800, NOW()),
-  ('prod-real-009', 'ORS Sachet', 'ORASEL', 'Rehydration', 'Powder', false, '6001001000097', 400, 900, NOW()),
-  ('prod-real-010', 'Zinc Sulphate 20mg', 'Zindol', 'Supplements', 'Tablet', false, '6001001000103', 600, 1200, NOW()),
-  ('prod-real-011', 'Ibuprofen 400mg', 'Brufen', 'Analgesics', 'Tablet', false, '6001001000110', 1100, 2100, NOW()),
-  ('prod-real-012', 'Ciprofloxacin 500mg', 'Cipro', 'Antibiotics', 'Tablet', true, '6001001000127', 3800, 5200, NOW()),
-  ('prod-real-013', 'Losartan 50mg', 'Cozaar', 'Cardiovascular', 'Tablet', true, '6001001000134', 5600, 7500, NOW()),
-  ('prod-real-014', 'Vitamin C 500mg', 'Redoxon', 'Vitamins & Supplements', 'Tablet', false, '6001001000141', 1300, 2200, NOW()),
-  ('prod-real-015', 'Metronidazole 400mg', 'Flagyl', 'Antibiotics', 'Tablet', true, '6001001000158', 900, 1700, NOW()),
-  ('prod-real-016', 'Dextromethorphan Syrup', 'Benylin', 'Respiratory', 'Syrup', false, '6001001000165', 4500, 6500, NOW()),
-  ('prod-real-017', 'Insulin Glargine', 'Lantus', 'Diabetes Care', 'Injection', true, '6001001000172', 28000, 35000, NOW()),
-  ('prod-real-018', 'Atorvastatin 20mg', 'Lipitor', 'Cardiovascular', 'Tablet', true, '6001001000189', 6200, 8200, NOW()),
-  ('prod-real-019', 'Amlodipine 5mg', 'Norvasc', 'Cardiovascular', 'Tablet', true, '6001001000196', 2400, 3600, NOW()),
-  ('prod-real-020', 'Chloroquine 250mg', 'Nivaquine', 'Antimalarials', 'Tablet', false, '6001001000202', 800, 1500, NOW())
+  ('11111111-1111-1111-1111-111111111001', 'Amoxicillin 500mg', 'Amoxil', 'Antibiotics', 'Capsule', true, '6001001000011', 3200, 4500, NOW()),
+  ('11111111-1111-1111-1111-111111111002', 'Paracetamol 500mg', 'Panadol', 'Analgesics', 'Tablet', false, '6001001000028', 1200, 2500, NOW()),
+  ('11111111-1111-1111-1111-111111111003', 'Artemether/Lumefantrine 20/120mg', 'Coartem', 'Antimalarials', 'Tablet', true, '6001001000035', 4800, 6800, NOW()),
+  ('11111111-1111-1111-1111-111111111004', 'Metformin 500mg', 'Glucophage', 'Diabetes Care', 'Tablet', true, '6001001000042', 4200, 5900, NOW()),
+  ('11111111-1111-1111-1111-111111111005', 'Amoxicillin/Clavulanate 625mg', 'Augmentin', 'Antibiotics', 'Tablet', true, '6001001000059', 5500, 7800, NOW()),
+  ('11111111-1111-1111-1111-111111111006', 'Cetirizine 10mg', 'Zyrtec', 'Antihistamines', 'Tablet', false, '6001001000066', 900, 1600, NOW()),
+  ('11111111-1111-1111-1111-111111111007', 'Omeprazole 20mg', 'Losec', 'Digestive Health', 'Capsule', false, '6001001000073', 1800, 2800, NOW()),
+  ('11111111-1111-1111-1111-111111111008', 'Salbutamol Inhaler 100mcg', 'Ventolin', 'Respiratory', 'Inhaler', true, '6001001000080', 9500, 12800, NOW()),
+  ('11111111-1111-1111-1111-111111111009', 'ORS Sachet', 'ORASEL', 'Rehydration', 'Powder', false, '6001001000097', 400, 900, NOW()),
+  ('11111111-1111-1111-1111-111111111010', 'Zinc Sulphate 20mg', 'Zindol', 'Supplements', 'Tablet', false, '6001001000103', 600, 1200, NOW()),
+  ('11111111-1111-1111-1111-111111111011', 'Ibuprofen 400mg', 'Brufen', 'Analgesics', 'Tablet', false, '6001001000110', 1100, 2100, NOW()),
+  ('11111111-1111-1111-1111-111111111012', 'Ciprofloxacin 500mg', 'Cipro', 'Antibiotics', 'Tablet', true, '6001001000127', 3800, 5200, NOW()),
+  ('11111111-1111-1111-1111-111111111013', 'Losartan 50mg', 'Cozaar', 'Cardiovascular', 'Tablet', true, '6001001000134', 5600, 7500, NOW()),
+  ('11111111-1111-1111-1111-111111111014', 'Vitamin C 500mg', 'Redoxon', 'Vitamins & Supplements', 'Tablet', false, '6001001000141', 1300, 2200, NOW()),
+  ('11111111-1111-1111-1111-111111111015', 'Metronidazole 400mg', 'Flagyl', 'Antibiotics', 'Tablet', true, '6001001000158', 900, 1700, NOW()),
+  ('11111111-1111-1111-1111-111111111016', 'Dextromethorphan Syrup', 'Benylin', 'Respiratory', 'Syrup', false, '6001001000165', 4500, 6500, NOW()),
+  ('11111111-1111-1111-1111-111111111017', 'Insulin Glargine', 'Lantus', 'Diabetes Care', 'Injection', true, '6001001000172', 28000, 35000, NOW()),
+  ('11111111-1111-1111-1111-111111111018', 'Atorvastatin 20mg', 'Lipitor', 'Cardiovascular', 'Tablet', true, '6001001000189', 6200, 8200, NOW()),
+  ('11111111-1111-1111-1111-111111111019', 'Amlodipine 5mg', 'Norvasc', 'Cardiovascular', 'Tablet', true, '6001001000196', 2400, 3600, NOW()),
+  ('11111111-1111-1111-1111-111111111020', 'Chloroquine 250mg', 'Nivaquine', 'Antimalarials', 'Tablet', false, '6001001000202', 800, 1500, NOW())
 ON CONFLICT (id) DO UPDATE SET
   generic_name = EXCLUDED.generic_name,
   brand_name = EXCLUDED.brand_name,
@@ -48,26 +48,26 @@ BEGIN
   END IF;
 
   INSERT INTO supplier_catalog (id, supplier_id, product_id, price, currency, min_order_qty, stock_qty, pack_size, lead_time_days, status, sku, updated_at) VALUES
-    ('sc-real-001', sup_id, 'prod-real-001', 4500, 'TZS', 50, 600, '10x10 caps', 2, 'active', 'MED-AMOX-500', NOW()),
-    ('sc-real-002', sup_id, 'prod-real-002', 2500, 'TZS', 100, 1200, '10x10 tabs', 1, 'active', 'MED-PARA-500', NOW()),
-    ('sc-real-003', sup_id, 'prod-real-003', 6800, 'TZS', 30, 400, '24 tabs', 2, 'active', 'MED-COART-6x4', NOW()),
-    ('sc-real-004', sup_id, 'prod-real-004', 5900, 'TZS', 40, 350, '60 tabs', 3, 'active', 'MED-MET-500', NOW()),
-    ('sc-real-005', sup_id, 'prod-real-005', 7800, 'TZS', 30, 250, '14 tabs', 2, 'active', 'MED-AUG-625', NOW()),
-    ('sc-real-006', sup_id, 'prod-real-006', 1600, 'TZS', 60, 500, '10 tabs', 2, 'active', 'MED-CET-10', NOW()),
-    ('sc-real-007', sup_id, 'prod-real-007', 2800, 'TZS', 40, 300, '14 caps', 2, 'active', 'MED-OME-20', NOW()),
-    ('sc-real-008', sup_id, 'prod-real-008', 12800, 'TZS', 10, 80, '200 dose', 3, 'active', 'MED-SALB-INH', NOW()),
-    ('sc-real-009', sup_id, 'prod-real-009', 900, 'TZS', 200, 2000, '1 sachet', 1, 'active', 'MED-ORS-1', NOW()),
-    ('sc-real-010', sup_id, 'prod-real-010', 1200, 'TZS', 80, 600, '10 tabs', 2, 'active', 'MED-ZINC-20', NOW()),
-    ('sc-real-011', sup_id, 'prod-real-011', 2100, 'TZS', 50, 700, '10 tabs', 1, 'active', 'MED-IBU-400', NOW()),
-    ('sc-real-012', sup_id, 'prod-real-012', 5200, 'TZS', 40, 280, '10 tabs', 2, 'active', 'MED-CIP-500', NOW()),
-    ('sc-real-013', sup_id, 'prod-real-013', 7500, 'TZS', 30, 200, '30 tabs', 3, 'active', 'MED-LOS-50', NOW()),
-    ('sc-real-014', sup_id, 'prod-real-014', 2200, 'TZS', 50, 800, '15 tabs', 1, 'active', 'MED-VITC-500', NOW()),
-    ('sc-real-015', sup_id, 'prod-real-015', 1700, 'TZS', 60, 450, '10 tabs', 2, 'active', 'MED-FLAG-400', NOW()),
-    ('sc-real-016', sup_id, 'prod-real-016', 6500, 'TZS', 20, 150, '100ml', 2, 'active', 'MED-BENY-100', NOW()),
-    ('sc-real-017', sup_id, 'prod-real-017', 35000, 'TZS', 5, 40, '1 vial', 4, 'active', 'MED-LANT-1', NOW()),
-    ('sc-real-018', sup_id, 'prod-real-018', 8200, 'TZS', 30, 180, '30 tabs', 3, 'active', 'MED-LIPI-20', NOW()),
-    ('sc-real-019', sup_id, 'prod-real-019', 3600, 'TZS', 40, 320, '30 tabs', 2, 'active', 'MED-NORV-5', NOW()),
-    ('sc-real-020', sup_id, 'prod-real-020', 1500, 'TZS', 80, 900, '10 tabs', 1, 'active', 'MED-NIVA-250', NOW())
+    ('22222222-2222-2222-2222-222222222001', sup_id, '11111111-1111-1111-1111-111111111001', 4500, 'TZS', 50, 600, '10x10 caps', 2, 'active', 'MED-AMOX-500', NOW()),
+    ('22222222-2222-2222-2222-222222222002', sup_id, '11111111-1111-1111-1111-111111111002', 2500, 'TZS', 100, 1200, '10x10 tabs', 1, 'active', 'MED-PARA-500', NOW()),
+    ('22222222-2222-2222-2222-222222222003', sup_id, '11111111-1111-1111-1111-111111111003', 6800, 'TZS', 30, 400, '24 tabs', 2, 'active', 'MED-COART-6x4', NOW()),
+    ('22222222-2222-2222-2222-222222222004', sup_id, '11111111-1111-1111-1111-111111111004', 5900, 'TZS', 40, 350, '60 tabs', 3, 'active', 'MED-MET-500', NOW()),
+    ('22222222-2222-2222-2222-222222222005', sup_id, '11111111-1111-1111-1111-111111111005', 7800, 'TZS', 30, 250, '14 tabs', 2, 'active', 'MED-AUG-625', NOW()),
+    ('22222222-2222-2222-2222-222222222006', sup_id, '11111111-1111-1111-1111-111111111006', 1600, 'TZS', 60, 500, '10 tabs', 2, 'active', 'MED-CET-10', NOW()),
+    ('22222222-2222-2222-2222-222222222007', sup_id, '11111111-1111-1111-1111-111111111007', 2800, 'TZS', 40, 300, '14 caps', 2, 'active', 'MED-OME-20', NOW()),
+    ('22222222-2222-2222-2222-222222222008', sup_id, '11111111-1111-1111-1111-111111111008', 12800, 'TZS', 10, 80, '200 dose', 3, 'active', 'MED-SALB-INH', NOW()),
+    ('22222222-2222-2222-2222-222222222009', sup_id, '11111111-1111-1111-1111-111111111009', 900, 'TZS', 200, 2000, '1 sachet', 1, 'active', 'MED-ORS-1', NOW()),
+    ('22222222-2222-2222-2222-222222222010', sup_id, '11111111-1111-1111-1111-111111111010', 1200, 'TZS', 80, 600, '10 tabs', 2, 'active', 'MED-ZINC-20', NOW()),
+    ('22222222-2222-2222-2222-222222222011', sup_id, '11111111-1111-1111-1111-111111111011', 2100, 'TZS', 50, 700, '10 tabs', 1, 'active', 'MED-IBU-400', NOW()),
+    ('22222222-2222-2222-2222-222222222012', sup_id, '11111111-1111-1111-1111-111111111012', 5200, 'TZS', 40, 280, '10 tabs', 2, 'active', 'MED-CIP-500', NOW()),
+    ('22222222-2222-2222-2222-222222222013', sup_id, '11111111-1111-1111-1111-111111111013', 7500, 'TZS', 30, 200, '30 tabs', 3, 'active', 'MED-LOS-50', NOW()),
+    ('22222222-2222-2222-2222-222222222014', sup_id, '11111111-1111-1111-1111-111111111014', 2200, 'TZS', 50, 800, '15 tabs', 1, 'active', 'MED-VITC-500', NOW()),
+    ('22222222-2222-2222-2222-222222222015', sup_id, '11111111-1111-1111-1111-111111111015', 1700, 'TZS', 60, 450, '10 tabs', 2, 'active', 'MED-FLAG-400', NOW()),
+    ('22222222-2222-2222-2222-222222222016', sup_id, '11111111-1111-1111-1111-111111111016', 6500, 'TZS', 20, 150, '100ml', 2, 'active', 'MED-BENY-100', NOW()),
+    ('22222222-2222-2222-2222-222222222017', sup_id, '11111111-1111-1111-1111-111111111017', 35000, 'TZS', 5, 40, '1 vial', 4, 'active', 'MED-LANT-1', NOW()),
+    ('22222222-2222-2222-2222-222222222018', sup_id, '11111111-1111-1111-1111-111111111018', 8200, 'TZS', 30, 180, '30 tabs', 3, 'active', 'MED-LIPI-20', NOW()),
+    ('22222222-2222-2222-2222-222222222019', sup_id, '11111111-1111-1111-1111-111111111019', 3600, 'TZS', 40, 320, '30 tabs', 2, 'active', 'MED-NORV-5', NOW()),
+    ('22222222-2222-2222-2222-222222222020', sup_id, '11111111-1111-1111-1111-111111111020', 1500, 'TZS', 80, 900, '10 tabs', 1, 'active', 'MED-NIVA-250', NOW())
   ON CONFLICT (id) DO UPDATE SET
     price = EXCLUDED.price,
     stock_qty = EXCLUDED.stock_qty,
@@ -78,6 +78,6 @@ BEGIN
 END $$;
 
 -- Verify
-SELECT 'products' as table, count(*) FROM products WHERE id LIKE 'prod-real-%'
+SELECT 'products' as tbl, count(*) FROM products WHERE barcode LIKE '6001001000%'
 UNION ALL
-SELECT 'catalog (active)' as table, count(*) FROM supplier_catalog WHERE status = 'active';
+SELECT 'catalog (active)' as tbl, count(*) FROM supplier_catalog WHERE status = 'active';
