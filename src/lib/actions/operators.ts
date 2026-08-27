@@ -25,7 +25,7 @@ export interface UpdateOperatorInput {
   branch_id?: string;
 }
 
-export function validatePin(pin: string): string | null {
+export async function validatePin(pin: string): Promise<string | null> {
   if (!/^\d{4,8}$/.test(pin)) return "PIN must be 4-8 digits.";
   return null;
 }
@@ -77,7 +77,7 @@ export async function createOperator(
 
   if (!branch) return { error: "Branch not found or access denied." };
 
-  const pinError = validatePin(input.pin);
+  const pinError = await validatePin(input.pin);
   if (pinError) return { error: pinError };
 
   const pinHash = await hashPin(input.pin);
@@ -176,7 +176,7 @@ export async function resetOperatorPin(
   const branchAccountId = (op.branches as unknown as { account_id: string } | null)?.account_id;
   if (branchAccountId !== accountId) return { error: "Access denied." };
 
-  const pinError = validatePin(newPin);
+  const pinError = await validatePin(newPin);
   if (pinError) return { error: pinError };
 
   const pinHash = await hashPin(newPin);

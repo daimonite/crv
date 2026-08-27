@@ -201,7 +201,7 @@ export default function Subscription() {
           To update your payment method, please contact our support team or visit the billing portal.
         </p>
         <a
-          href="https://billing.stripe.com"
+          href="https://cervos.online/supplier/settings"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent2 text-white rounded-lg font-medium transition-colors"

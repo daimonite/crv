@@ -149,9 +149,14 @@ export default function Subscription() {
               ))}
             </ul>
             {plan.tier !== sub.tier && (
-              <button className="mt-4 w-full py-2 rounded-md border border-primary text-primary text-sm font-semibold hover:bg-primary/10">
+              <a
+                href="https://cervos.online/dashboard/billing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 w-full py-2 rounded-md border border-primary text-primary text-sm font-semibold hover:bg-primary/10 text-center inline-block"
+              >
                 Upgrade
-              </button>
+              </a>
             )}
           </div>
         ))}

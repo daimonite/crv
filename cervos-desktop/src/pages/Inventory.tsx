@@ -74,11 +74,15 @@ export default function Inventory() {
   });
 
   function handleProductClick(product: Product) {
-    if (!isAdmin && permissions.canViewInventoryDetail) {
+    if (isAdmin && permissions.canEditInventory) {
+      setEditingProduct(product);
+    } else if (permissions.canViewInventoryDetail) {
       loadProductDetails(product);
       setViewingProduct(product);
     } else {
-      setEditingProduct(product);
+      // Fallback: view-only if no edit permission
+      loadProductDetails(product);
+      setViewingProduct(product);
     }
   }
 

@@ -153,9 +153,14 @@ export default function Settings() {
               </span>
             </p>
           </div>
-          <button className="px-4 py-2 bg-surface-200 border border-surface-300 rounded-lg text-white hover:bg-surface-300 transition-colors">
+          <a
+            href="https://cervos.online/supplier/subscription"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-surface-200 border border-surface-300 rounded-lg text-white hover:bg-surface-300 transition-colors inline-block"
+          >
             Upgrade Plan
-          </button>
+          </a>
         </div>
       </div>
     </div>
