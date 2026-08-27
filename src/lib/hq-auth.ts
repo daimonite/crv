@@ -33,6 +33,14 @@ export const HQ_COOKIE_NAME = "hq_sess";
 const PLACEHOLDER = "placeholder-hq-secret";
 
 /**
+ * Returns the raw `HQ_SECRET` environment variable value.
+ * Used by server actions to check whether the HQ console is configured.
+ */
+export function getHQSecret(): string | undefined {
+  return process.env.HQ_SECRET;
+}
+
+/**
  * Derives the expected HQ session token from the configured secret.
  * Uses HMAC-SHA256 with a fixed message so the output is deterministic
  * but cannot be reversed to recover the raw secret.
