@@ -13,6 +13,12 @@ export async function GET(request: Request) {
     if (!error && data.session) {
       const accountType = data.session.user.user_metadata?.account_type ?? "pharmacy";
       const inviteToken = data.session.user.user_metadata?.invite_token;
+      const isRecovery = data.session.user.email_confirmed_at !== null && next?.includes("recovery");
+
+      if (searchParams.get("type") === "recovery" || next?.startsWith("/auth/recovery")) {
+        return NextResponse.redirect(`${origin}/auth/recovery`);
+      }
+
       const redirectTo = accountType === "supplier" ? "/supplier" : next;
 
       if (inviteToken && accountType === "supplier") {

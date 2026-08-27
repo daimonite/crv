@@ -165,7 +165,7 @@ function AuthForm() {
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        redirectTo: `${window.location.origin}/auth/callback?type=recovery&next=/auth/recovery`,
       });
       if (error) { setToast({ message: error.message, type: "error" }); return; }
       setToast({ message: t("auth.reset.sent"), type: "success" });
