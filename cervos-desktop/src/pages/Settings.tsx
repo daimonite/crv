@@ -164,8 +164,8 @@ export default function Settings() {
   }
 
   async function handleSignOut() {
-    logout()
     await signOut()
+    logout()
     navigate('/login')
   }
 

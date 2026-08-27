@@ -39,6 +39,7 @@ export default function PharmacySidebar({ branchName, accountName, logoUrl }: Ph
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/auth");
+    router.refresh();
   }
 
   const NAV = [

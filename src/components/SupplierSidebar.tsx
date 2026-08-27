@@ -36,6 +36,7 @@ export default function SupplierSidebar({ accountName, logoUrl }: SupplierSideba
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/auth");
+    router.refresh();
   }
 
   const NAV = [
