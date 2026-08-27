@@ -19,7 +19,7 @@
  */
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -509,11 +509,14 @@ export interface MarketplaceProduct {
  * from the network's suppliers, with lead time + verified badge.
  */
 export async function getMarketplaceProducts(): Promise<MarketplaceProduct[]> {
-  const supabase = await createClient();
+  const authClient = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
   if (!user) return [];
+  const supabase = await createServiceClient();
+  // Use service client for catalog read — marketplace is public to any authenticated user,
+  // and anon RLS often blocks the join. Service bypasses RLS but we still require auth above.
 
   type MarketplaceRow = {
     id: string;
