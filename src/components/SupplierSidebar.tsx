@@ -52,7 +52,7 @@ export default function SupplierSidebar({ accountName, logoUrl }: SupplierSideba
   ];
 
   return (
-    <nav className="hidden md:flex flex-col w-64 z-40 fixed left-0 top-0 bottom-0 border-r border-outline-variant bg-surface h-full">
+    <nav className="hidden md:flex flex-col w-64 z-40 fixed left-0 top-0 bottom-0 border-r border-outline-variant bg-surface h-full overflow-hidden">
 
       {/* Brand / account logo */}
       <div className="p-6 border-b border-outline-variant">
@@ -97,8 +97,8 @@ export default function SupplierSidebar({ accountName, logoUrl }: SupplierSideba
         </Link>
       </div>
 
-      {/* Nav */}
-      <ul className="flex-grow py-3">
+      {/* Nav — scrolls */}
+      <ul className="flex-1 py-3 overflow-y-auto min-h-0 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-outline-variant [&::-webkit-scrollbar-thumb]:rounded-full">
         {NAV.map((item) => {
           const active = pathname === item.href || (item.href !== "/supplier" && pathname.startsWith(item.href));
           return (
@@ -119,8 +119,8 @@ export default function SupplierSidebar({ accountName, logoUrl }: SupplierSideba
         })}
       </ul>
 
-      {/* Footer */}
-      <div className="border-t border-outline-variant py-3">
+      {/* Footer — pinned */}
+      <div className="border-t border-outline-variant py-3 shrink-0 bg-surface">
         {accountName && (
           <div className="px-6 py-2 mb-2">
             <p className="text-label-md font-label-md text-on-surface-variant text-xs">{t("sidebar.signed_in_as")}</p>

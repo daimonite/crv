@@ -53,7 +53,7 @@ export default function Shell() {
       <aside
         className={`${
           sidebarCollapsed ? 'w-16' : 'w-64'
-        } bg-surface-100 border-r border-surface-300 flex flex-col transition-all duration-200`}
+        } bg-surface-100 border-r border-surface-300 flex flex-col transition-all duration-200 overflow-hidden`}
       >
         <div className="h-16 flex items-center justify-between px-4 border-b border-surface-300">
           {!sidebarCollapsed && (
@@ -69,7 +69,7 @@ export default function Shell() {
           </button>
         </div>
 
-        <nav className="flex-1 py-4 px-2 space-y-1">
+        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto min-h-0 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-surface-300 [&::-webkit-scrollbar-thumb]:rounded-full">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
@@ -88,7 +88,7 @@ export default function Shell() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-surface-300">
+        <div className="p-4 border-t border-surface-300 shrink-0 bg-surface-100">
           <NavLink
             to="/storefront"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-accent/20 text-accent"

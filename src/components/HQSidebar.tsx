@@ -48,7 +48,7 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   }
 
   return (
-    <aside className="hidden md:flex flex-col h-full py-6 bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-40">
+    <aside className="hidden md:flex flex-col h-full py-6 bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-40 overflow-hidden">
       <div className="px-6 mb-6">
         <h2 className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">
           {t("hq.sidebar.title")}
@@ -58,7 +58,7 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col gap-1 px-2">
+      <div className="flex-1 flex flex-col gap-1 px-2 overflow-y-auto min-h-0 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-outline-variant [&::-webkit-scrollbar-thumb]:rounded-full">
         {NAV.map((item) => {
           const active =
             pathname === item.href ||
@@ -92,7 +92,7 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
         })}
       </div>
 
-      <div className="px-2 mt-auto pt-4 border-t border-outline-variant">
+      <div className="px-2 mt-auto pt-4 border-t border-outline-variant shrink-0 bg-surface-container-low">
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-3 w-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-75 rounded-md"

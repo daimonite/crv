@@ -56,7 +56,7 @@ export default function PharmacySidebar({ branchName, accountName, logoUrl }: Ph
   ];
 
   return (
-    <aside className="bg-surface fixed left-0 top-0 h-full w-64 border-r border-outline-variant flex flex-col py-6 z-20">
+    <aside className="bg-surface fixed left-0 top-0 h-full w-64 border-r border-outline-variant flex flex-col py-6 z-20 overflow-hidden">
       {/* Brand / account logo */}
       <div className="px-6 mb-8 flex items-center gap-2">
         {logoUrl ? (
@@ -109,8 +109,8 @@ export default function PharmacySidebar({ branchName, accountName, logoUrl }: Ph
         </div>
       )}
 
-      {/* Nav */}
-      <nav className="flex-1 flex flex-col gap-0.5 px-3">
+      {/* Nav — scrolls if items overflow */}
+      <nav className="flex-1 flex flex-col gap-0.5 px-3 overflow-y-auto min-h-0 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-outline-variant [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-outline-variant/80">
         {NAV.map(item => {
           const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
@@ -142,8 +142,8 @@ export default function PharmacySidebar({ branchName, accountName, logoUrl }: Ph
         </Link>
       </nav>
 
-      {/* Footer */}
-      <div className="px-3 mt-auto flex flex-col border-t border-outline-variant pt-3">
+      {/* Footer — pinned */}
+      <div className="px-3 mt-auto flex flex-col border-t border-outline-variant pt-3 shrink-0 bg-surface">
         {accountName && (
           <div className="px-3 py-2 mb-1">
             <p className="text-[10px] font-label-md text-on-surface-variant uppercase tracking-wider">{t("sidebar.signed_in_as")}</p>

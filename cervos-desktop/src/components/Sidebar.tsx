@@ -25,7 +25,7 @@ export default function Sidebar() {
   const locale = useI18nStore((s) => s.locale)
 
   return (
-    <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0">
+    <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0 overflow-hidden">
       <div className="h-14 flex items-center px-4 border-b border-outline-variant gap-2">
         <LogoMark className="shrink-0" />
         <span className="font-headline font-black text-lg text-on-surface">
@@ -33,7 +33,7 @@ export default function Sidebar() {
         </span>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto min-h-0 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-outline-variant [&::-webkit-scrollbar-thumb]:rounded-full">
         {baseNavItems.map((item) => (
           <NavLink
             key={item.path}
@@ -80,7 +80,7 @@ export default function Sidebar() {
       </nav>
 
       {currentOperator && (
-        <div className="p-3 border-t border-outline-variant">
+        <div className="p-3 border-t border-outline-variant shrink-0 bg-surface-base">
           <div className="bg-primary/10 rounded-lg p-3">
             <p className="text-xs font-semibold text-primary truncate">{currentOperator.name}</p>
             <p className="text-xs text-on-surface-variant mt-0.5 capitalize">{currentOperator.role}</p>
