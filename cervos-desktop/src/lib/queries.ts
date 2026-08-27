@@ -10,14 +10,14 @@ export async function fetchOperators(branchId: string): Promise<Operator[]> {
   return queryDb('SELECT * FROM operators WHERE branch_id = ? ORDER BY name', [branchId])
 }
 
-export async function validateOperatorPin(branchId: string, pin: string): Promise<Operator | null> {
-  const results = await queryDb('SELECT * FROM operators WHERE branch_id = ?', [branchId])
-  for (const op of results) {
-    const hash = await hashPin(pin)
-    if (op.pin_hash === hash) {
-      return op
-    }
-  }
+export async function validateOperatorPin(a: string, b: string, c?: string): Promise<Operator | null> {
+  // Supports: validateOperatorPin(operatorId, pin) and legacy validateOperatorPin(operatorId, branchId, pin)
+  const operatorId = a
+  const pin = c !== undefined ? c : b
+  const op = await fetchOperator(operatorId)
+  if (!op) return null
+  const hash = await hashPin(pin)
+  if (op.pin_hash === hash) return op
   return null
 }
 

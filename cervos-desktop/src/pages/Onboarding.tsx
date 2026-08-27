@@ -95,7 +95,17 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       const { generateId } = await import('../lib/database')
 
       const branchResult = await dbQuery("SELECT value FROM app_settings WHERE key = 'branch_id'")
-      const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : generateId()
+      let branchId: string
+      if (branchResult.length > 0) {
+        branchId = JSON.parse(branchResult[0].value) as string
+      } else {
+        branchId = generateId()
+        const { executeDb } = await import('../lib/database')
+        await executeDb(
+          `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          ['branch_id', JSON.stringify(branchId)]
+        )
+      }
 
       const op = await createOperator({
         branch_id: branchId,
