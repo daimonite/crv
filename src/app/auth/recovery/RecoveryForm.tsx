@@ -23,35 +23,61 @@ export default function RecoveryForm() {
   useEffect(() => {
     const code = searchParams.get("code");
     const tokenHash = searchParams.get("token_hash");
+    const urlError = searchParams.get("error");
+
+    let cancelled = false;
+    let timeoutError: string | null = null;
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        setChecking(false);
+        setExchanging(false);
+        setError(timeoutError || urlError || t("auth.confirm.expired"));
+      }
+    }, 10000);
 
     (async () => {
+      if (!code && !tokenHash) {
+        // No valid link — show the expired/invalid message instead of spinning
+        if (!cancelled) {
+          setError(urlError ? `error: ${urlError}` : t("auth.confirm.expired"));
+          setChecking(false);
+        }
+        clearTimeout(timeout);
+        return;
+      }
+
       if (code) {
         setExchanging(true);
         const { error: codeError } = await supabase.auth.exchangeCodeForSession(code);
         if (codeError) {
-          setError(codeError.message);
-          setChecking(false);
+          if (!cancelled) { setError(codeError.message); setChecking(false); setExchanging(false); }
+          clearTimeout(timeout);
           return;
         }
       } else if (tokenHash) {
-        // Some Supabase templates deliver a token_hash instead of a code
+        setExchanging(true);
         const { error: hashError } = await supabase.auth.verifyOtp({
           type: "recovery",
           token_hash: tokenHash,
         });
         if (hashError) {
-          setError(hashError.message);
-          setChecking(false);
+          if (!cancelled) { setError(hashError.message); setChecking(false); setExchanging(false); }
+          clearTimeout(timeout);
           return;
         }
       }
 
       const { data } = await supabase.auth.getSession();
-      setHasSession(!!data.session);
-      setChecking(false);
-      setExchanging(false);
+      if (!cancelled) {
+        setHasSession(!!data.session);
+        setChecking(false);
+        setExchanging(false);
+      }
+      clearTimeout(timeout);
     })();
-  }, [searchParams, supabase]);
+
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [searchParams, supabase, t]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,7 +146,10 @@ export default function RecoveryForm() {
               </div>
             ) : !hasSession ? (
               <div className="text-center py-4">
-                <p className="font-body-md text-body-md text-on-surface-variant mb-6">{t("auth.recover.updated")}</p>
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <span className="material-symbols-outlined text-[22px] text-error">error</span>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">{t("auth.reset.title")}</h2>
+                </div>
                 <p className="font-body-sm text-body-sm text-error mb-6">
                   {error || t("auth.confirm.expired")}
                 </p>
