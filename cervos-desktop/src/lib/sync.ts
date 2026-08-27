@@ -74,7 +74,7 @@ export async function signIn(
   n: string,
   t: string
 ): Promise<void> {
-  if (!isConfigured) throw new Error('Supabase is not configured yet.')
+  if (!isConfigured) throw new Error('POS not configured — Supabase keys missing. Rebuild the app with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (see cervos-desktop/.env).')
   Ie = supabase
   const { error, data } = await Ie.auth.signInWithPassword({
     email: n,
@@ -90,9 +90,9 @@ export async function signIn(
 }
 
 export async function provisionBranch(): Promise<void> {
-  if (!Ie) throw new Error('Not linked to Supabase.')
+  if (!Ie) throw new Error('Not linked to Supabase — please sign in again.')
   const { data: user } = await Ie.auth.getUser()
-  if (!user.user) return
+  if (!user.user) throw new Error('No authenticated user found. Please sign in again.')
 
   const { data: account } = await Ie
     .from('accounts')
@@ -100,7 +100,17 @@ export async function provisionBranch(): Promise<void> {
     .eq('auth_user_id', user.user.id)
     .maybeSingle()
 
-  if (!account) return
+  if (!account) throw new Error('No pharmacy account found for this login. Create one at cervos.online/auth first.')
+
+  // Avoid creating duplicate branch if this device already provisioned
+  const existingBranch = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
+  if (existingBranch.length > 0) {
+    try {
+      const existingId = JSON.parse(existingBranch[0].value) as string
+      const { data: existing } = await Ie.from('branches').select('id').eq('id', existingId).maybeSingle()
+      if (existing) return // already provisioned
+    } catch { /* ignore parse error */ }
+  }
 
   const nameResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
   const latResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_lat'")
@@ -119,7 +129,7 @@ export async function provisionBranch(): Promise<void> {
   const branchId = generateId()
   const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString()
 
-  await Ie.from('branches').insert({
+  const { error } = await Ie.from('branches').insert({
     id: branchId,
     account_id: account.id,
     name: centreName,
@@ -131,6 +141,8 @@ export async function provisionBranch(): Promise<void> {
     subscription_status: 'trial',
     trial_ends_at: trialEndsAt,
   })
+
+  if (error) throw new Error(`Failed to create branch: ${error.message}`)
 
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,

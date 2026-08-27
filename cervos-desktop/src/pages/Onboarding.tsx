@@ -114,10 +114,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   async function handleOpenSignup() {
+    const signupUrl = 'https://cervos.online/auth'
     try {
-      await invoke('open', { url: 'https://cervos.online/signup' })
+      // Tauri 2 opener plugin — fallback to window.open if not available
+      await invoke('plugin:opener|open_url', { url: signupUrl })
     } catch {
-      window.open('https://cervos.online/signup', '_blank')
+      window.open(signupUrl, '_blank')
     }
   }
 
