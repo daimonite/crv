@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from './lib/hooks'
 import Shell from './components/Shell'
@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Pos from './pages/Pos'
 import Inventory from './pages/Inventory'
 import Settings from './pages/Settings'
+import Shifts from './pages/Shifts'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Marketplace from './pages/Marketplace'
@@ -157,6 +158,7 @@ function AppRoutes() {
           <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
           <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
           <Route path="records" element={<AdminRoute><Records /></AdminRoute>} />
+          <Route path="shifts" element={<Shifts />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="marketplace" element={<Marketplace />} />
           <Route path="subscription" element={<Subscription />} />

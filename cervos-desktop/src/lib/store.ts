@@ -29,16 +29,17 @@ interface AuthState {
 
 function computePermissions(operator: Operator | null): Permissions {
   const isAdmin = operator?.role === 'admin'
+  const isAuthenticated = operator !== null
   return {
     canEditInventory: isAdmin,
     canViewReports: isAdmin,
     canViewTelemetry: isAdmin,
     canViewManage: isAdmin,
     canViewReceipts: isAdmin,
-    canEditSettings: true,
-    canViewMarket: true,
-    canViewAlerts: true,
-    canViewInventoryDetail: true,
+    canEditSettings: isAdmin,
+    canViewMarket: isAuthenticated,
+    canViewAlerts: isAuthenticated,
+    canViewInventoryDetail: isAuthenticated,
   }
 }
 
@@ -55,10 +56,10 @@ export const useAuthStore = create<AuthState>()(
         canViewTelemetry: false,
         canViewManage: false,
         canViewReceipts: false,
-        canEditSettings: true,
-        canViewMarket: true,
-        canViewAlerts: true,
-        canViewInventoryDetail: true,
+        canEditSettings: false,
+        canViewMarket: false,
+        canViewAlerts: false,
+        canViewInventoryDetail: false,
       },
       _hasHydrated: false,
       setHasHydrated: (state) => set({ _hasHydrated: state }),

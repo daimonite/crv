@@ -53,6 +53,14 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    requiredWord: string;
+    action: () => Promise<{ error: string | null }>;
+    success: string;
+  } | null>(null);
+  const [confirmText, setConfirmText] = useState("");
 
   const [form, setForm] = useState({
     name: detail?.account?.name ?? "",
@@ -129,13 +137,29 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
     }
   }
 
-  async function handleSuspend() {
+  function handleSuspend() {
     const reason = suspendReason.trim();
     if (!reason) {
       showToast("Add a suspension reason first.", "error");
       return;
     }
-    await run("suspend", () => suspendAccount(acct.id, reason), "Account suspended.");
+    setConfirmText("");
+    setConfirmModal({
+      title: "Suspend account",
+      message: `This will suspend "${acct.name}" and block all sign-in and desktop sync. Reason: ${reason}`,
+      requiredWord: "CONFIRM",
+      action: () => suspendAccount(acct.id, reason),
+      success: "Account suspended.",
+    });
+  }
+
+  async function handleConfirm() {
+    if (!confirmModal) return;
+    const { action, success } = confirmModal;
+    const title = confirmModal.title;
+    setConfirmModal(null);
+    setConfirmText("");
+    await run(title, action, success);
   }
 
   async function handleAddOperator() {
@@ -206,7 +230,16 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                   {acct.suspension_reason || "No reason recorded"} — {formatDate(acct.suspended_at)}
                 </p>
                 <button
-                  onClick={() => run("unsuspend", () => unsuspendAccount(acct.id), "Account reinstated.")}
+                  onClick={() => {
+                    setConfirmText("");
+                    setConfirmModal({
+                      title: "Reinstate account",
+                      message: `This will reinstate "${acct.name}" and restore access for all branches.`,
+                      requiredWord: "UNLOCK",
+                      action: () => unsuspendAccount(acct.id),
+                      success: "Account reinstated.",
+                    });
+                  }}
                   disabled={busy === "unsuspend"}
                   className="w-full px-4 py-2 bg-secondary text-on-secondary font-label-md text-label-md disabled:opacity-60 flex items-center justify-center gap-2"
                 >
@@ -507,7 +540,16 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                     <p className="font-label-md text-label-md text-xs text-on-surface-variant uppercase tracking-wider">Controls</p>
                     {locked ? (
                       <button
-                        onClick={() => run(`unlock-${b.id}`, () => resetBranchSubscription(b.id), "Branch reset to active.")}
+                        onClick={() => {
+                          setConfirmText("");
+                          setConfirmModal({
+                            title: "Unlock branch",
+                            message: `This will reset branch "${b.name}" to active and restore access for all users.`,
+                            requiredWord: "UNLOCK",
+                            action: () => resetBranchSubscription(b.id),
+                            success: "Branch reset to active.",
+                          });
+                        }}
                         disabled={busy === `unlock-${b.id}`}
                         className="px-3 py-2 bg-secondary text-on-secondary font-label-md text-label-md text-sm disabled:opacity-60 flex items-center gap-2"
                       >
@@ -516,7 +558,16 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                       </button>
                     ) : (
                       <button
-                        onClick={() => run(`lock-${b.id}`, () => lockBranch(b.id), "Branch locked.")}
+                        onClick={() => {
+                          setConfirmText("");
+                          setConfirmModal({
+                            title: "Lock branch",
+                            message: `This will lock branch "${b.name}" and prevent all access until manually unlocked.`,
+                            requiredWord: "CONFIRM",
+                            action: () => lockBranch(b.id),
+                            success: "Branch locked.",
+                          });
+                        }}
                         disabled={busy === `lock-${b.id}`}
                         className="px-3 py-2 border border-error text-error font-label-md text-label-md text-sm disabled:opacity-60 flex items-center gap-2"
                       >
@@ -525,7 +576,16 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                       </button>
                     )}
                     <button
-                      onClick={() => run(`trial-${b.id}`, () => extendBranchTrial(b.id, 7), "Trial extended by 7 days.")}
+                      onClick={() => {
+                        setConfirmText("");
+                        setConfirmModal({
+                          title: "Extend trial",
+                          message: `This will extend the trial for branch "${b.name}" by 7 days.`,
+                          requiredWord: "CONFIRM",
+                          action: () => extendBranchTrial(b.id, 7),
+                          success: "Trial extended by 7 days.",
+                        });
+                      }}
                       disabled={busy === `trial-${b.id}`}
                       className="px-3 py-2 border border-outline-variant text-on-surface font-label-md text-label-md text-sm disabled:opacity-60"
                     >
@@ -564,7 +624,16 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                               ))}
                             </select>
                             <button
-                              onClick={() => run(`delop-${o.id}`, () => removeOperator(o.id), "Operator removed.")}
+                              onClick={() => {
+                                setConfirmText("");
+                                setConfirmModal({
+                                  title: "Remove operator",
+                                  message: `This will remove operator "${o.name}" from branch "${b.name}".`,
+                                  requiredWord: "CONFIRM",
+                                  action: () => removeOperator(o.id),
+                                  success: "Operator removed.",
+                                });
+                              }}
                               disabled={busy === `delop-${o.id}`}
                               title="Remove operator"
                               className="text-error hover:opacity-70 disabled:opacity-40"
@@ -654,6 +723,47 @@ export default function HQAccountDetailClient({ detail, error }: Props) {
                 className="mt-1 px-4 py-2 bg-primary text-on-primary font-label-md text-label-md disabled:opacity-60"
               >
                 {busy === "add-op" ? "Adding…" : "Add operator"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-surface-base border border-outline-variant p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-headline-sm text-headline-sm text-ink-deep">{confirmModal.title}</h3>
+              <button onClick={() => { setConfirmModal(null); setConfirmText(""); }} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="font-body-sm text-body-sm text-on-surface-variant mb-4">{confirmModal.message}</p>
+            <label className="flex flex-col gap-1 mb-4">
+              <span className="font-label-md text-label-md text-xs text-on-surface-variant uppercase tracking-wider">
+                Type <span className="font-bold text-error">{confirmModal.requiredWord}</span> to proceed
+              </span>
+              <input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                autoFocus
+                className="border border-outline-variant bg-surface-container-low px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirm}
+                disabled={confirmText !== confirmModal.requiredWord || busy !== null}
+                className="flex-1 px-4 py-2 bg-error text-on-error font-label-md text-label-md disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy !== null ? "Processing…" : "Confirm"}
+              </button>
+              <button
+                onClick={() => { setConfirmModal(null); setConfirmText(""); }}
+                className="px-4 py-2 border border-outline-variant text-on-surface-variant font-label-md text-label-md"
+              >
+                Cancel
               </button>
             </div>
           </div>

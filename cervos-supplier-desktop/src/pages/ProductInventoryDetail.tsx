@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchProduct, updateProduct } from '../lib/queries'
 import { Product } from '../lib/types'
@@ -42,7 +42,8 @@ export default function ProductInventoryDetail() {
 
     const change = type === 'add' ? adjustment.quantity : -adjustment.quantity
     const newQuantity = Math.max(0, product.stock_quantity + change)
-    const newStatus = newQuantity > 10 ? 'in_stock' : newQuantity > 0 ? 'low_stock' : 'out_of_stock'
+    const threshold = product.low_stock_threshold ?? 10
+    const newStatus = newQuantity > threshold ? 'in_stock' : newQuantity > 0 ? 'low_stock' : 'out_of_stock'
 
     try {
       const updated = await updateProduct(id, {

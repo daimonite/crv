@@ -1,25 +1,28 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
+import { useI18nStore, t } from '../lib/i18n'
 import { LogoMark } from './Logo'
 
 const baseNavItems = [
-  { path: '/', icon: 'dashboard', label: 'Dashboard' },
-  { path: '/pos', icon: 'point_of_sale', label: 'POS' },
-  { path: '/inventory', icon: 'inventory_2', label: 'Inventory' },
-  { path: '/settings', icon: 'settings', label: 'Settings' },
-  { path: '/alerts', icon: 'notifications', label: 'Alerts' },
+  { path: '/', icon: 'dashboard', key: 'nav.dashboard' },
+  { path: '/pos', icon: 'point_of_sale', key: 'nav.pos' },
+  { path: '/inventory', icon: 'inventory_2', key: 'nav.inventory' },
+  { path: '/shifts', icon: 'schedule', key: 'nav.shifts' },
+  { path: '/settings', icon: 'settings', key: 'nav.settings' },
+  { path: '/alerts', icon: 'notifications', key: 'nav.alerts' },
 ]
 
 const adminNavItems = [
-  { path: '/reports', icon: 'analytics', label: 'Reports' },
-  { path: '/users', icon: 'group', label: 'Users' },
-  { path: '/records', icon: 'receipt_long', label: 'Records' },
-  { path: '/marketplace', icon: 'store', label: 'Marketplace' },
-  { path: '/subscription', icon: 'credit_card', label: 'Subscription' },
+  { path: '/reports', icon: 'analytics', key: 'nav.reports' },
+  { path: '/users', icon: 'group', key: 'nav.users' },
+  { path: '/records', icon: 'receipt_long', key: 'nav.records' },
+  { path: '/marketplace', icon: 'store', key: 'nav.marketplace' },
+  { path: '/subscription', icon: 'credit_card', key: 'nav.subscription' },
 ]
 
 export default function Sidebar() {
   const { currentOperator, isAdmin } = useAuthStore()
+  const locale = useI18nStore((s) => s.locale)
 
   return (
     <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0">
@@ -47,7 +50,7 @@ export default function Sidebar() {
             <span className="material-symbols-outlined text-xl">
               {item.icon}
             </span>
-            {item.label}
+            {t(item.key)}
           </NavLink>
         ))}
 
@@ -69,7 +72,7 @@ export default function Sidebar() {
                 <span className="material-symbols-outlined text-xl">
                   {item.icon}
                 </span>
-                {item.label}
+                {t(item.key)}
               </NavLink>
             ))}
           </>

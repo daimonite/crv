@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import SupplierSidebar from "@/components/SupplierSidebar";
 import PaymentSettingsForm from "@/components/PaymentSettingsForm";
+import ChangePasswordForm from "@/components/ChangePasswordForm";
 import { getPaymentSettings } from "@/lib/actions/payments";
 import { getT } from "@/lib/i18n/server";
 
@@ -62,6 +63,19 @@ export default async function SupplierSettingsPage() {
                 <span>{t("sup.settings.load_error")}</span>
               </div>
             )}
+
+            {/* Change Password section */}
+            <div className="mt-12 mb-8">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-secondary text-[20px]">lock</span>
+                <h2 className="font-headline-md text-lg font-semibold text-ink-deep">{t("dash.settings.changepw")}</h2>
+              </div>
+              <p className="font-body-md text-sm text-on-surface-variant">
+                {t("dash.settings.changepw.body")}
+              </p>
+            </div>
+
+            <ChangePasswordForm />
           </div>
         </main>
       </div>

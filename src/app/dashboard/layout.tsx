@@ -1,10 +1,11 @@
 /**
  * @file dashboard/layout.tsx
- * @description Server layout for the pharmacy dashboard. Guards suspended
- *   accounts at the layout level so every /dashboard/* page is covered.
+ * @description Server layout for the pharmacy dashboard. Gates dashboard
+ *   access based on account subscription_status so locked/suspended accounts
+ *   cannot reach any /dashboard/* page.
  */
 import { createClient } from "@/lib/supabase/server";
-import SuspendedScreen from "@/components/SuspendedScreen";
+import SubscriptionGate from "@/components/SubscriptionGate";
 
 export default async function DashboardLayout({
   children,
@@ -16,16 +17,23 @@ export default async function DashboardLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
+  let subscription_status: "trial" | "active" | "grace" | "locked" | "suspended" = "active";
+
   if (user) {
     const { data: account } = await supabase
       .from("accounts")
-      .select("suspended_at, suspension_reason")
+      .select("subscription_status")
       .eq("auth_user_id", user.id)
       .maybeSingle();
-    if (account?.suspended_at) {
-      return <SuspendedScreen reason={account.suspension_reason} />;
+
+    if (account?.subscription_status) {
+      subscription_status = account.subscription_status;
     }
   }
 
-  return <>{children}</>;
+  return (
+    <SubscriptionGate subscription_status={subscription_status}>
+      {children}
+    </SubscriptionGate>
+  );
 }

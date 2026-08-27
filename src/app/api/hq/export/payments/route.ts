@@ -7,18 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isValidHQToken, HQ_COOKIE_NAME } from "@/lib/hq-auth";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
-
-function arrayToCSV(rows: Record<string, unknown>[], columns: { key: string; header: string }[]): string {
-  const header = columns.map((c) => `"${c.header}"`).join(",");
-  const body = rows.map((row) =>
-    columns.map((c) => {
-      const val = row[c.key];
-      const str = val == null ? "" : String(val);
-      return `"${str.replace(/"/g, '""')}"`;
-    }).join(",")
-  );
-  return [header, ...body].join("\n");
-}
+import { arrayToCSV } from "@/lib/export";
 
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();

@@ -14,31 +14,33 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useI18n } from "@/lib/i18n/context";
 
 interface HQSidebarProps {
   openSupportCount?: number;
 }
 
-const NAV = [
-  { label: "Overview",       href: "/hq",                icon: "dashboard" },
-  { label: "Alerts",         href: "/hq/alerts",         icon: "notifications" },
-  { label: "Intelligence",   href: "/hq/intelligence",   icon: "insights" },
-  { label: "Accounts",       href: "/hq/accounts",       icon: "group" },
-  { label: "Billing",        href: "/hq/billing",        icon: "payments" },
-  { label: "Quote Requests", href: "/hq/quotes",         icon: "request_quote" },
-  { label: "Invites",        href: "/hq/invites",        icon: "mail" },
-  { label: "Network Map",    href: "/hq/network",        icon: "public" },
-  { label: "Downloads",      href: "/hq/downloads",      icon: "download" },
-  { label: "Support",        href: "/hq/support",        icon: "support_agent" },
-  { label: "HQ Team",        href: "/hq/team",           icon: "badge" },
-  { label: "News",           href: "/hq/news",           icon: "newspaper" },
-  { label: "Messages",        href: "/hq/messages",       icon: "campaign" },
-  { label: "Audit Log",      href: "/hq/audit",          icon: "shield" },
-];
-
 export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useI18n();
+
+  const NAV = [
+    { label: t("hq.sidebar.overview"),       href: "/hq",                icon: "dashboard" },
+    { label: t("hq.sidebar.alerts"),         href: "/hq/alerts",         icon: "notifications" },
+    { label: t("hq.sidebar.intelligence"),   href: "/hq/intelligence",   icon: "insights" },
+    { label: t("hq.sidebar.accounts"),       href: "/hq/accounts",       icon: "group" },
+    { label: t("hq.sidebar.billing"),        href: "/hq/billing",        icon: "payments" },
+    { label: t("hq.sidebar.quotes"),         href: "/hq/quotes",         icon: "request_quote" },
+    { label: t("hq.sidebar.invites"),        href: "/hq/invites",        icon: "mail" },
+    { label: t("hq.sidebar.network"),        href: "/hq/network",        icon: "public" },
+    { label: t("hq.sidebar.downloads"),      href: "/hq/downloads",      icon: "download" },
+    { label: t("hq.sidebar.support"),        href: "/hq/support",        icon: "support_agent" },
+    { label: t("hq.sidebar.team"),           href: "/hq/team",           icon: "badge" },
+    { label: t("hq.sidebar.news"),           href: "/hq/news",           icon: "newspaper" },
+    { label: t("hq.sidebar.messages"),       href: "/hq/messages",       icon: "campaign" },
+    { label: t("hq.sidebar.audit"),          href: "/hq/audit",          icon: "shield" },
+  ];
 
   async function handleLogout() {
     document.cookie = `hq_sess=; Max-Age=0; path=/`;
@@ -49,10 +51,10 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
     <aside className="hidden md:flex flex-col h-full py-6 bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-40">
       <div className="px-6 mb-6">
         <h2 className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">
-          HQ Console
+          {t("hq.sidebar.title")}
         </h2>
         <div className="font-mono text-[10px] text-on-surface-variant uppercase">
-          Sector-01 Status: Nominal
+          {t("hq.sidebar.status")}
         </div>
       </div>
 
@@ -96,7 +98,7 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
           className="flex items-center gap-3 px-3 py-3 w-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-75 rounded-md"
         >
           <span className="material-symbols-outlined text-[18px]">logout</span>
-          <span className="font-label-md text-label-md">Sign Out</span>
+          <span className="font-label-md text-label-md">{t("hq.sidebar.logout")}</span>
         </button>
       </div>
     </aside>

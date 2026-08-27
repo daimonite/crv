@@ -1,6 +1,7 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
+import { useI18nStore, t } from '../lib/i18n'
 import { queryDb } from '../lib/database'
 import Logo from './Logo'
 
@@ -50,6 +51,8 @@ export default function TopBar() {
     navigate('/login')
   }
 
+  const { locale, toggleLocale } = useI18nStore()
+
   return (
     <header className="h-14 bg-surface-base border-b border-outline-variant/60 flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-2">
@@ -63,10 +66,20 @@ export default function TopBar() {
           <span className="text-xs text-on-surface-variant">{getStatusLabel(subscriptionStatus)}</span>
         </div>
 
+        <button
+          onClick={toggleLocale}
+          title={locale === 'en' ? 'Switch to Swahili' : 'Switch to English'}
+          className="p-2 rounded-lg hover:bg-outline-variant/50 transition-colors"
+        >
+          <span className="material-symbols-outlined text-xl text-on-surface-variant">
+            language
+          </span>
+        </button>
+
         {currentOperator && (
           <button
             onClick={handleLock}
-            title="Lock the terminal"
+            title={t('common.lock')}
             className="p-2 rounded-lg hover:bg-outline-variant/50 transition-colors"
           >
             <span className="material-symbols-outlined text-xl text-on-surface-variant">

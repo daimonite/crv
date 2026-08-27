@@ -53,16 +53,15 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   };
 
   const exportCsv = () => {
-    const headers = ["Order Number", "Date", "Supplier", "Total", "Status", "Items"];
+    const headers = ["Order Number", "Date", "Supplier", "Total", "Status"];
     const rows = filtered.map((o) => [
-      o.id.slice(0, 8).toUpperCase(),
+      o.id,
       o.created_at?.split("T")[0] ?? "",
       (o.suppliers as unknown as { company_name: string } | null)?.company_name ?? "—",
       o.total?.toFixed(2) ?? "0.00",
       o.status,
-      "",
     ]);
-    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

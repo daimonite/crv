@@ -101,8 +101,8 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
         return;
       }
     } else if (modal.mode === "reset" && modal.operator) {
-      if (!form.pin || form.pin.length < 4) {
-        setError("PIN must be at least 4 digits.");
+      if (!form.pin || !/^\d{4,8}$/.test(form.pin)) {
+        setError("PIN must be 4-8 digits.");
         setLoading(false);
         return;
       }
@@ -285,10 +285,10 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    maxLength={6}
+                    maxLength={8}
                     value={form.pin}
                     onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "") })}
-                    placeholder="4-6 digits"
+                    placeholder="4-8 digits"
                     className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
                   />
                 </div>
@@ -303,10 +303,10 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    maxLength={6}
+                    maxLength={8}
                     value={form.pin}
                     onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "") })}
-                    placeholder="4-6 digits"
+                    placeholder="4-8 digits"
                     className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
                   />
                 </div>

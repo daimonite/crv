@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file lib/actions/hq.ts
  * @description Server actions for the Cervos HQ Console.
  *
@@ -24,13 +24,14 @@
  */
 "use server";
 
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { scryptSync, timingSafeEqual, createHash, randomBytes } from "crypto";
 import {
   HQ_COOKIE_NAME,
   isValidHQToken,
   deriveHQSessionToken,
+  getHQSecret,
 } from "@/lib/hq-auth";
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -117,7 +118,7 @@ export async function loginHQ(input: {
     return { error: "Enter your HQ email and password." };
   }
 
-  const configured = process.env.HQ_SECRET;
+  const configured = getHQSecret();
   if (!configured || configured === PLACEHOLDER_SECRET || configured.length < 32) {
     return { error: "HQ console is not configured. Contact your system administrator." };
   }
@@ -738,7 +739,7 @@ export async function saveSupplierQuoteAnswers(
     notes?: string;
   }
 ): Promise<{ error: string | null }> {
-  const supabase = await createServiceClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
@@ -781,7 +782,7 @@ export async function getSupplierQuoteAnswers(quoteRequestId: string): Promise<{
   } | null;
   error: string | null;
 }> {
-  const supabase = await createServiceClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: "Unauthorized" };
 
@@ -1821,7 +1822,7 @@ export async function resetBranchSubscription(branchId: string): Promise<{ error
 
 // â”€â”€â”€ Operator management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const OPERATOR_ROLES = ["cashier", "pharmacist_in_charge", "owner"] as const;
+const OPERATOR_ROLES = ["admin", "operator"] as const;
 
 /**
  * Adds an operator to a branch. The PIN is hashed with SHA-256, matching
@@ -2830,16 +2831,19 @@ export async function getBillingOverview(): Promise<{ data: BillingOverview | nu
   let accounts: Record<string, unknown>[] = [];
   let branches: Record<string, unknown>[] = [];
   let manualPayments: { amount_tzs: string; created_at: string }[] = [];
+  let plans: Record<string, unknown>[] = [];
 
   try {
-    const [accountsResult, branchesResult, paymentsResult] = await Promise.all([
-      supabase.from("accounts").select("id, subscription_status").neq("type", "supplier"),
+    const [accountsResult, branchesResult, paymentsResult, plansResult] = await Promise.all([
+      supabase.from("accounts").select("id, subscription_status, subscription_plan").neq("type", "supplier"),
       supabase.from("branches").select("account_id"),
       supabase.from("billing_payments").select("amount_tzs, created_at"),
+      supabase.from("subscription_plans").select("id, price_monthly_tzs"),
     ]);
     accounts = accountsResult.data ?? [];
     branches = branchesResult.data ?? [];
     manualPayments = paymentsResult.data ?? [];
+    plans = plansResult.data ?? [];
   } catch {
     // Tables may not exist - use empty data
   }
@@ -2853,9 +2857,6 @@ export async function getBillingOverview(): Promise<{ data: BillingOverview | nu
     branchesByAccount.set(b.account_id as string, (branchesByAccount.get(b.account_id as string) ?? 0) + 1);
   }
 
-  // totalMrr cannot be calculated without subscription_plans table
-  const totalMrr = 0;
-
   const mtdPayments = manualPayments.filter((p) =>
     new Date(p.created_at) >= startOfMonth
   );
@@ -2866,12 +2867,23 @@ export async function getBillingOverview(): Promise<{ data: BillingOverview | nu
   const mtdRevenue = mtdPayments.reduce((sum, p) => sum + (Number(p.amount_tzs) || 0), 0);
   const ytdRevenue = ytdPayments.reduce((sum, p) => sum + (Number(p.amount_tzs) || 0), 0);
 
+  const planMap = new Map<string, number>();
+  for (const p of plans) {
+    planMap.set(p.id as string, Number(p.price_monthly_tzs) || 0);
+  }
+
+  const totalMrr = accounts
+    .filter((a) => a.subscription_status === "active" || a.subscription_status === "trial")
+    .reduce((sum, a) => sum + (planMap.get(a.subscription_plan as string) ?? 0), 0);
+
+  const pendingPayments = accounts.filter((a) => a.subscription_status === "payment_due").length;
+
   return {
     data: {
       totalMrr,
       activeSubscriptions,
-      pendingPayments: 0,
-      failedPayments: accounts.filter((a) => a.subscription_status === "payment_due").length,
+      pendingPayments,
+      failedPayments: accounts.filter((a) => a.subscription_status === "payment_failed").length,
       mtdRevenue,
       ytdRevenue,
     },

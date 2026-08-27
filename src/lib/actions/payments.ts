@@ -216,3 +216,137 @@ export async function savePaymentSettings(
   if (error) return { error: error.message };
   return { error: null };
 }
+
+// ─── Payme Africa Collection (real payments) ────────────────────────────────
+
+export interface CreatePaymentInput {
+  order_id?: string;
+  amount_tzs: number;
+  msisdn: string;
+  reference: string;
+  idempotency_key: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  reference: string;
+  status: string;
+  provider_transaction_id: string | null;
+  amount_tzs: number;
+}
+
+/**
+ * Initiates a Payme Africa mobile money collection.
+ * Creates a pending payment record, calls the Payme API, and stores the provider reference.
+ */
+export async function initiatePayment(
+  input: CreatePaymentInput
+): Promise<{ data: PaymentRecord | null; error: string | null }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated." };
+
+  const { data: account, error: acctError } = await supabase
+    .from("accounts")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (acctError || !account) return { data: null, error: "Account not found." };
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  const { error: insertError } = await supabase.from("payments").insert({
+    account_id: account.id,
+    order_id: input.order_id || null,
+    reference: input.reference,
+    idempotency_key: input.idempotency_key,
+    amount_tzs: input.amount_tzs,
+    msisdn: input.msisdn,
+    status: "pending",
+  });
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return { data: null, error: "A payment with this reference already exists." };
+    }
+    return { data: null, error: insertError.message };
+  }
+
+  const { initiateCollection } = await import("@/lib/payme");
+  const { data: paymeResponse, error: paymeError } = await initiateCollection({
+    amount: input.amount_tzs,
+    msisdn: input.msisdn,
+    reference: input.reference,
+    callback_url: `${appUrl}/api/webhooks/payme`,
+  });
+
+  if (paymeError) {
+    await supabase
+      .from("payments")
+      .update({ status: "failed", failure_reason: paymeError })
+      .eq("reference", input.reference);
+    return { data: null, error: paymeError };
+  }
+
+  await supabase
+    .from("payments")
+    .update({
+      provider_transaction_id: paymeResponse?.transaction_id || null,
+      status: paymeResponse?.payment_status === "COMPLETED" ? "completed" : "pending",
+      completed_at: paymeResponse?.payment_status === "completed" ? new Date().toISOString() : null,
+    })
+    .eq("reference", input.reference);
+
+  return {
+    data: {
+      id: "",
+      reference: input.reference,
+      status: paymeResponse?.payment_status || "pending",
+      provider_transaction_id: paymeResponse?.transaction_id || null,
+      amount_tzs: input.amount_tzs,
+    },
+    error: null,
+  };
+}
+
+/**
+ * Queries the current status of a payment by reference.
+ * Useful for polling when a webhook hasn't arrived yet.
+ */
+export async function getPaymentStatus(
+  reference: string
+): Promise<{ data: { status: string; payment_status: string } | null; error: string | null }> {
+  const { queryTransaction } = await import("@/lib/payme");
+  return queryTransaction(reference);
+}
+
+/**
+ * Gets payment history for the current account.
+ */
+export async function getPaymentHistory(): Promise<{
+  data: PaymentRecord[] | null;
+  error: string | null;
+}> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated." };
+
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!account) return { data: null, error: "Account not found." };
+
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id, reference, status, provider_transaction_id, amount_tzs, created_at, completed_at")
+    .eq("account_id", account.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) return { data: null, error: error.message };
+  return { data: data as PaymentRecord[], error: null };
+}
