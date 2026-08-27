@@ -42,7 +42,7 @@ export default function Receipt({
               <span>
                 {product?.generic_name || "Unknown"} x{item.quantity}
               </span>
-              <span>${(item.unit_price * item.quantity).toFixed(2)}</span>
+              <span>TZS {(item.unit_price * item.quantity).toLocaleString()}</span>
             </div>
           );
         })}
@@ -51,7 +51,7 @@ export default function Receipt({
       <div className="space-y-1">
         <div className="flex justify-between">
           <span>Subtotal</span>
-          <span>${(sale.total - sale.tax - sale.discount).toFixed(2)}</span>
+          <span>TZS {(sale.total - sale.tax - sale.discount).toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
           <span>Tax</span>

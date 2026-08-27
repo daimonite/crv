@@ -56,7 +56,7 @@ export default function Storefront() {
                 </div>
                 <p className="text-sm text-gray-400 mb-4 line-clamp-2">{product.description}</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-white">TZS ${product.price.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-white">TZS {product.price.toLocaleString()}</span>
                   <span className="text-sm text-gray-500">{product.stock_quantity} in stock</span>
                 </div>
               </div>

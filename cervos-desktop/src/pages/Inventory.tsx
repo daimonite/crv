@@ -225,10 +225,10 @@ export default function Inventory() {
                     {stock}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    ${cheapestBatch?.cost_price.toFixed(2) || "â€”"}
+                    TZS {cheapestBatch ? cheapestBatch.cost_price.toLocaleString() : "—"}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    ${mostExpensiveBatch?.sale_price.toFixed(2) || "â€”"}
+                    TZS {mostExpensiveBatch ? mostExpensiveBatch.sale_price.toLocaleString() : "—"}
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-3">

@@ -237,7 +237,7 @@ function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
               {receipt.items.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between text-sm">
                   <span className="text-on-surface">{item.product_name} x{item.quantity}</span>
-                  <span className="font-medium">${(item.unit_price * item.quantity).toFixed(2)}</span>
+                  <span className="font-medium">TZS {(item.unit_price * item.quantity).toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -246,7 +246,7 @@ function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
           <div className="border-t border-outline-variant pt-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="text-on-surface-variant">Subtotal</span>
-              <span>${(receipt.total - receipt.tax).toFixed(2)}</span>
+              <span>TZS {(receipt.total - receipt.tax).toLocaleString()}</span>
             </div>
             {receipt.tax > 0 && (
               <div className="flex items-center justify-between text-sm">

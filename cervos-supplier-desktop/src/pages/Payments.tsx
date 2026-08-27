@@ -48,11 +48,11 @@ export default function Payments() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-surface-100 rounded-xl border border-surface-300 p-6">
           <p className="text-sm text-gray-400">Total Revenue</p>
-          <p className="text-3xl font-bold text-green-400 mt-2">${totalRevenue.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-green-400 mt-2">TZS {totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-surface-100 rounded-xl border border-surface-300 p-6">
           <p className="text-sm text-gray-400">Pending Payments</p>
-          <p className="text-3xl font-bold text-yellow-400 mt-2">${pendingPayments.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-yellow-400 mt-2">TZS {pendingPayments.toLocaleString()}</p>
         </div>
         <div className="bg-surface-100 rounded-xl border border-surface-300 p-6">
           <p className="text-sm text-gray-400">Total Transactions</p>
