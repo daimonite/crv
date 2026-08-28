@@ -88,7 +88,7 @@ export default function PublicNav({ activePath = "" }: { activePath?: string }) 
           </Link>
 
           <Link
-            href="/auth?tab=signup"
+            href="/auth?tab=signup&type=pharmacy"
             className="bg-primary text-on-primary font-label-md text-label-md px-5 py-2 rounded hover:bg-primary/90 active:scale-[0.98] transition-all gaming-snap text-sm"
           >
             {t("nav.getstarted")}
@@ -113,7 +113,7 @@ export default function PublicNav({ activePath = "" }: { activePath?: string }) 
             <Link href="/auth" onClick={() => setMenuOpen(false)} className="flex-1 text-center py-2.5 border border-outline-variant font-label-md text-label-md text-on-surface-variant hover:border-primary rounded">
               {t("nav.login")}
             </Link>
-            <Link href="/auth?tab=signup" onClick={() => setMenuOpen(false)} className="flex-1 text-center py-2.5 bg-primary text-on-primary font-label-md text-label-md rounded">
+            <Link href="/auth?tab=signup&type=pharmacy" onClick={() => setMenuOpen(false)} className="flex-1 text-center py-2.5 bg-primary text-on-primary font-label-md text-label-md rounded">
               {t("nav.getstarted")}
             </Link>
           </div>

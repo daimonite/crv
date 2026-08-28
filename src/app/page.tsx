@@ -40,7 +40,7 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="/auth?tab=signup"
+                href="/auth?tab=signup&type=pharmacy"
                 className="bg-primary text-on-primary font-label-md text-label-md px-8 py-4 rounded hover:scale-[1.02] active:scale-[0.98] transition-transform gaming-snap flex items-center justify-center gap-2"
               >
                 {t("hero.cta.start")}
@@ -138,7 +138,7 @@ export default function LandingPage() {
                 ))}
               </ul>
               <Link
-                href="/auth?tab=signup"
+                href="/auth?tab=signup&type=pharmacy"
                 className="mt-2 w-fit inline-flex items-center gap-2 bg-primary text-on-primary font-label-md text-label-md px-6 py-3 rounded hover:scale-[1.02] active:scale-[0.98] transition-transform gaming-snap"
               >
                 {t("hero.cta.start")}
@@ -243,7 +243,7 @@ export default function LandingPage() {
           <h2 className="font-headline-lg text-headline-lg mb-4">{t("landing.cta.ready")}</h2>
           <p className="font-body-lg text-body-lg text-on-primary/80 mb-8">{t("landing.cta.join")}</p>
           <div className="flex gap-4 justify-center flex-wrap">
-            <Link href="/auth?tab=signup" className="bg-white text-primary font-label-md text-label-md px-8 py-4 rounded hover:scale-[1.02] active:scale-[0.98] transition-transform gaming-snap">
+            <Link href="/auth?tab=signup&type=pharmacy" className="bg-white text-primary font-label-md text-label-md px-8 py-4 rounded hover:scale-[1.02] active:scale-[0.98] transition-transform gaming-snap">
               {t("hero.cta.start")}
             </Link>
             <Link href="/supplier/quote" className="border border-white/30 text-on-primary font-label-md text-label-md px-8 py-4 rounded hover:bg-white/10 transition-colors">
