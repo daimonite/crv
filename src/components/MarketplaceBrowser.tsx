@@ -319,14 +319,14 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                       <span>TZS {totalValue.toLocaleString()}</span>
                     </div>
                     <div>
-                      <label className="font-mono text-[10px] text-on-surface-variant uppercase">Payme wallet (charged on order)</label>
+                      <label className="font-mono text-[10px] text-on-surface-variant uppercase">{t("mkt.checkout.wallet_label")}</label>
                       <input
                         value={walletMsisdn}
                         onChange={(e) => setWalletMsisdn(e.target.value)}
                         placeholder="+255..."
                         className="mt-1 w-full px-3 py-2 border border-outline-variant bg-surface text-sm focus:outline-none focus:border-primary-container"
                       />
-                      <p className="text-[10px] text-on-surface-variant mt-1">Payment held in escrow via Payme Africa until delivery.</p>
+                      <p className="text-[10px] text-on-surface-variant mt-1">{t("mkt.checkout.escrow_note")}</p>
                     </div>
                     <button
                       onClick={async () => {
@@ -385,7 +385,7 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                       disabled={submitting}
                       className="w-full bg-ink-deep text-white font-mono text-label-md py-3 uppercase hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
-                      {submitting ? t("common.loading") : "Place Order & Pay"}
+                      {submitting ? t("common.loading") : t("mkt.checkout.place_order")}
                     </button>
                   </div>
                 )}

@@ -12,6 +12,7 @@
 
 import { useState, useMemo } from "react";
 import { saveCatalogProduct, setCatalogProductStatus } from "@/lib/actions/supplier";
+import { useI18n } from "@/lib/i18n/context";
 
 /** A product in the supplier's catalogue. */
 export interface CatalogProduct {
@@ -55,6 +56,7 @@ function StatusBadge({ status }: { status: CatalogProduct["status"] }) {
 }
 
 export default function SupplierCatalogManager({ initialProducts }: SupplierCatalogManagerProps) {
+  const { t } = useI18n();
   const [products, setProducts] = useState<CatalogProduct[]>(initialProducts);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
@@ -102,7 +104,7 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
 
   async function handleSave() {
     if (!formData.name?.trim()) {
-      setError("Product name is required.");
+      setError(t("sup.catalog.product_name_required"));
       return;
     }
     setSaving(true);
@@ -169,7 +171,7 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
           <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]">search</span>
           <input
             type="text"
-            placeholder="Search by name, SKU..."
+            placeholder={t("sup.catalog.search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 pr-4 py-2 border border-outline-variant bg-surface-container-lowest text-on-surface text-body-sm font-body-md focus:outline-none focus:border-primary-container w-full"
@@ -195,7 +197,7 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
           className="ml-auto flex items-center gap-2 bg-ink-deep text-white font-mono text-label-md px-4 py-2 hover:opacity-90 transition-opacity uppercase"
         >
           <span className="material-symbols-outlined text-[16px]">add</span>
-          Add Product
+          {t("sup.catalog.add_product")}
         </button>
       </div>
 
@@ -210,20 +212,20 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-surface-container border-b border-outline-variant">
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">Product</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">SKU</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">Pack Size</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">Unit Price</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">Stock</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">Status</th>
-              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase text-right">Actions</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.product")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.sku")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.pack_size")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.unit_price")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.stock")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase">{t("sup.catalog.status")}</th>
+              <th className="px-4 py-3 font-mono text-label-md text-on-surface-variant uppercase text-right">{t("sup.catalog.actions")}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-on-surface-variant font-body-md">
-                  No products found.
+                  {t("sup.catalog.no_products")}
                 </td>
               </tr>
             )}
@@ -249,13 +251,13 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
                     onClick={() => openEdit(p)}
                     className="font-mono text-label-md text-primary-container border border-primary-container px-2 py-1 hover:bg-surface-container-high transition-colors uppercase"
                   >
-                    Edit
+                    {t("sup.catalog.edit")}
                   </button>
                   <button
                     onClick={() => toggleArchive(p.id)}
                     className="font-mono text-label-md text-on-surface-variant border border-outline-variant px-2 py-1 hover:bg-surface-container transition-colors uppercase"
                   >
-                    {p.status === "archived" ? "Restore" : "Archive"}
+                    {p.status === "archived" ? t("sup.catalog.restore") : t("sup.catalog.archive")}
                   </button>
                 </td>
               </tr>
@@ -271,7 +273,7 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
             <div className="absolute top-0 right-0 w-5 h-5 border-l border-b border-outline-variant" />
             <div className="p-6 border-b border-outline-variant flex justify-between items-center">
               <h2 className="font-headline-md text-headline-md text-ink-deep">
-                {editTarget ? "Edit Product" : "Add Product"}
+                {editTarget ? t("sup.catalog.edit_product_title") : t("sup.catalog.add_product_title")}
               </h2>
               <button onClick={() => setShowAddModal(false)} className="text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
@@ -316,14 +318,14 @@ export default function SupplierCatalogManager({ initialProducts }: SupplierCata
                 onClick={() => setShowAddModal(false)}
                 className="font-mono text-label-md border border-outline-variant px-4 py-2 uppercase hover:bg-surface-container transition-colors"
               >
-                Cancel
+                {t("sup.catalog.cancel")}
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="font-mono text-label-md bg-ink-deep text-white px-6 py-2 uppercase hover:opacity-90 transition-opacity disabled:opacity-60"
               >
-                {saving ? "Saving..." : editTarget ? "Save Changes" : "Add Product"}
+                {saving ? t("sup.catalog.saving") : editTarget ? t("sup.catalog.save_changes") : t("sup.catalog.add_product")}
               </button>
             </div>
           </div>
