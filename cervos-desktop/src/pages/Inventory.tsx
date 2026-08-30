@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { queryDb, executeDb, generateId, nowIso } from "../lib/database";
 import { queueForSync, runSyncCycle } from "../lib/sync";
 import { PHARMACY_CATEGORIES } from "../lib/branding";

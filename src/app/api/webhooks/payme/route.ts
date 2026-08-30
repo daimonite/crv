@@ -15,7 +15,11 @@ export async function POST(req: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const rawBody = await req.text();
-  const signature = req.headers.get("X-Middleware-Signature") || "";
+  // NOTE: header name must match whatever Payme Africa actually sends on
+  // webhook callbacks — confirm this against your merchant dashboard docs.
+  // This is aligned to "X-Signature" to match the header name used when
+  // *we* sign outbound requests in src/lib/payme.ts (getHeaders()).
+  const signature = req.headers.get("X-Signature") || "";
   const timestamp = req.headers.get("X-Timestamp") || "";
 
   if (!verifyWebhookSignature(rawBody, timestamp, signature)) {

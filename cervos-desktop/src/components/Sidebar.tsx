@@ -25,7 +25,7 @@ export default function Sidebar() {
   const locale = useI18nStore((s) => s.locale)
 
   return (
-    <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0 overflow-hidden">
+    <aside key={locale} className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0 overflow-hidden">
       <div className="h-14 flex items-center px-4 border-b border-outline-variant gap-2">
         <LogoMark className="shrink-0" />
         <span className="font-headline font-black text-lg text-on-surface">

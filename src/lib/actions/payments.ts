@@ -294,7 +294,7 @@ export async function initiatePayment(
     .update({
       provider_transaction_id: paymeResponse?.transaction_id || null,
       status: paymeResponse?.payment_status === "COMPLETED" ? "completed" : "pending",
-      completed_at: paymeResponse?.payment_status === "completed" ? new Date().toISOString() : null,
+      completed_at: paymeResponse?.payment_status === "COMPLETED" ? new Date().toISOString() : null,
     })
     .eq("reference", input.reference);
 

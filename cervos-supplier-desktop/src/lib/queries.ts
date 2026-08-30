@@ -136,7 +136,7 @@ export async function acknowledgeCommand(commandId: string): Promise<void> {
   if (error) throw error
 }
 
-export function createPollingInterval(supplierId: string, callback: () => void, intervalMs = 30000): () => void {
+export function createPollingInterval(_supplierId: string, callback: () => void, intervalMs = 30000): () => void {
   const id = setInterval(callback, intervalMs)
   return () => clearInterval(id)
 }
