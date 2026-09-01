@@ -275,7 +275,7 @@ export async function getBranchTransactions(): Promise<BranchTransaction[]> {
 
   const { data: payments } = await service
     .from("payments")
-    .select("id, amount_tzs, status, reference, created_at, order_id, orders(buyer_branch_id, order_reference)")
+    .select("id, amount_tzs, status, reference, created_at, order_id, orders!inner(buyer_branch_id, order_reference)")
     .eq("orders.buyer_branch_id", branchId)
     .order("created_at", { ascending: false })
     .limit(100);
