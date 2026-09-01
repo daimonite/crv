@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSubscribedActive } from "@/lib/subscription";
 import PharmacySidebar from "@/components/PharmacySidebar";
 import OrdersTable from "@/components/OrdersTable";
 import { getOrders } from "@/lib/actions/orders";
@@ -15,11 +16,14 @@ export default async function OrdersPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("id, name, type")
+    .select("id, name, type, subscription_status, subscription_expires_at, trial_ends_at")
     .eq("auth_user_id", user.id)
     .single();
 
   if (account?.type !== "pharmacy") redirect("/dashboard");
+
+  // Subscription paywall: order history is part of the pharmacy plan.
+  if (!isSubscribedActive(account)) redirect("/dashboard/billing");
 
   const orders = await getOrders(account!.id);
 

@@ -106,6 +106,7 @@ export const strings: Record<string, Record<Lang, string>> = {
   "portal.operators":  { EN: "Operators",    SW: "Waendeshaji" },
   "portal.orders":    { EN: "Orders",       SW: "Maagizo" },
   "portal.branches":  { EN: "Branches",     SW: "Matawi" },
+  "portal.network":   { EN: "Network",      SW: "Mtandao" },
   "portal.reports":  { EN: "Reports",      SW: "Ripoti" },
 
   // ── Supplier portal ───────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ export const strings: Record<string, Record<Lang, string>> = {
   "sup.analytics":    { EN: "Analytics",           SW: "Takwimu" },
   "sup.alerts":       { EN: "Alerts",             SW: "Tahadhari" },
   "sup.storefront":   { EN: "Storefront Preview", SW: "Hati ya Duka" },
+  "sup.connections":  { EN: "Connections", SW: "Miunganisho" },
   "sup.subscription": { EN: "Subscription",        SW: "Usajili" },
   "sup.activity":    { EN: "Activity Log",      SW: "Kumbukumbu" },
   "sup.quote":       { EN: "Request Quote",      SW: "Omba Nukuu" },

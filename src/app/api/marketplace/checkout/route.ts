@@ -1,27 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAnonClient } from "@supabase/supabase-js";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
-
-async function getUserFromRequest(request: NextRequest) {
-  try {
-    const cookieClient = await createClient();
-    const { data: { user } } = await cookieClient.auth.getUser();
-    if (user) return user;
-  } catch { /* fallback */ }
-
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (token) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const bearerClient = createAnonClient(url, anonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: { user } } = await bearerClient.auth.getUser();
-    if (user) return user;
-  }
-  return null;
-}
+import { createServiceClient } from "@/lib/supabase/server";
+import { getUserFromRequest } from "@/lib/api-auth";
 
 export async function POST(request: NextRequest) {
   const user = await getUserFromRequest(request);
@@ -52,13 +31,34 @@ export async function POST(request: NextRequest) {
   // Validate buyer branch belongs to caller's account
   const { data: account } = await service
     .from("accounts")
-    .select("id, payme_wallet_number")
+    .select("id, type, name, payme_wallet_number, subscription_status, subscription_expires_at")
     .eq("auth_user_id", user.id)
     .single();
 
   if (!account) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
   }
+
+  if (account.type === "supplier") {
+    return NextResponse.json({ error: "Supplier accounts cannot place orders." }, { status: 403 });
+  }
+
+  // Subscription gate: placing orders requires an active/mid-trial subscription.
+  const subActive =
+    account.subscription_status === "active" ||
+    account.subscription_status === "trial" ||
+    (account.subscription_expires_at && new Date(account.subscription_expires_at) > new Date());
+  if (!subActive) {
+    return NextResponse.json(
+      { error: "Your subscription has expired. Renew it from Billing to keep ordering.", code: "SUBSCRIPTION_REQUIRED" },
+      { status: 403 }
+    );
+  }
+
+  // Prefer the wallet saved in payment_settings, fall back to the accounts column.
+  const walletFromSettings = (
+    await service.from("payment_settings").select("payme_wallet_number").eq("account_id", account.id).maybeSingle()
+  ).data as { payme_wallet_number?: string | null } | null;
 
   const { data: branch } = await service
     .from("branches")
@@ -92,6 +92,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "All items must be from the same supplier." }, { status: 400 });
   }
   const sellerId = sellerIds[0] as string;
+
+  // Browsing the marketplace is open to everyone, but placing an order requires
+  // the branch to have an approved connection with this supplier.
+  const { data: connection } = await service
+    .from("branch_supplier_connections")
+    .select("status")
+    .eq("branch_id", buyerBranchId)
+    .eq("supplier_id", sellerId)
+    .maybeSingle();
+
+  if (!connection || connection.status !== "approved") {
+    return NextResponse.json(
+      {
+        error: connection?.status === "pending"
+          ? "Connection request to this supplier is still pending approval."
+          : "This branch isn't connected to this supplier yet. Ask the supplier to send a connection request, then approve it from Marketplace > Connection Requests.",
+        code: "CONNECTION_REQUIRED",
+      },
+      { status: 403 }
+    );
+  }
 
   const priceMap = new Map(catalogRows.map((r) => [r.id, r] as const));
   let total = 0;
@@ -143,7 +164,12 @@ export async function POST(request: NextRequest) {
   }
 
   // If no payment info or zero total, return order without charging
-  const walletMsisdn = (msisdn?.trim() || (account as unknown as { payme_wallet_number?: string }).payme_wallet_number || "").trim();
+  const walletMsisdn = (
+    msisdn?.trim() ||
+    walletFromSettings?.payme_wallet_number ||
+    (account as unknown as { payme_wallet_number?: string }).payme_wallet_number ||
+    ""
+  ).trim();
   if (!walletMsisdn || total <= 0) {
     return NextResponse.json({
       orderId,

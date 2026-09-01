@@ -50,6 +50,7 @@ export default function PharmacySidebar({ branchName, accountName, logoUrl }: Ph
     { labelKey: "portal.operators",  href: "/dashboard/operators",   icon: "group" },
     { labelKey: "portal.orders",     href: "/dashboard/orders",      icon: "shopping_cart" },
     { labelKey: "portal.branches",    href: "/dashboard/branches",    icon: "storefront" },
+    { labelKey: "portal.network",     href: "/dashboard/network",     icon: "map" },
     { labelKey: "portal.reports",    href: "/dashboard/reports",    icon: "analytics" },
     { labelKey: "portal.billing",    href: "/dashboard/billing",     icon: "payments" },
     { labelKey: "portal.settings",   href: "/dashboard/settings",    icon: "settings" },

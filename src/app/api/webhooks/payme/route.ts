@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyWebhookSignature, type PaymeWebhookPayload } from "@/lib/payme";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { activateSubscription } from "@/lib/subscription";
+import { settleOrderPayout } from "@/lib/escrow";
 
 export async function POST(req: NextRequest) {
   const rl = checkRateLimit("payme-webhook", 100, 60_000);
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   const { data: payment, error: fetchError } = await supabase
     .from("payments")
-    .select("id, status, account_id, order_id, amount_tzs")
+    .select("id, reference, status, account_id, order_id, amount_tzs")
     .eq("reference", reference)
     .single();
 
@@ -57,12 +59,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, message: "Already processed" });
   }
 
+  const succeeded = payment_status === "COMPLETED" && result === "SUCCESS";
+
   const updateFields: Record<string, unknown> = {
     provider_transaction_id: transid,
     updated_at: new Date().toISOString(),
   };
 
-  if (payment_status === "COMPLETED" && result === "SUCCESS") {
+  if (succeeded) {
     updateFields.status = "completed";
     updateFields.completed_at = new Date().toISOString();
 
@@ -91,6 +95,29 @@ export async function POST(req: NextRequest) {
   if (updateError) {
     console.error(`[Payme Webhook] Failed to update payment: ${updateError.message}`);
     return NextResponse.json({ error: "Failed to update payment" }, { status: 500 });
+  }
+
+  if (succeeded) {
+    if (reference.startsWith("SUB-")) {
+      const sub = await activateSubscription({ service: supabase, reference });
+      if (!sub.ok) {
+        console.error(`[Payme Webhook] Subscription activation failed for ${reference}: ${sub.message}`);
+      }
+    } else if (payment.order_id) {
+      // Escrow settlement: confirm order + disburse to supplier.
+      const orderRes = await supabase
+        .from("orders")
+        .select("id, order_reference, seller_id, buyer_branch_id")
+        .eq("id", payment.order_id)
+        .single();
+
+      if (orderRes.data) {
+        const settle = await settleOrderPayout({ service: supabase, payment, order: orderRes.data });
+        if (!settle.ok) {
+          console.error(`[Payme Webhook] Settlement failed for order ${payment.order_id}: ${settle.message}`);
+        }
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });

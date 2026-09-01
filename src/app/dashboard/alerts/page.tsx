@@ -5,6 +5,7 @@
  */
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSubscribedActive } from "@/lib/subscription";
 import { getPharmacyAlerts, getPharmacyNotifications } from "@/lib/actions/pharmacy";
 import PharmacySidebar from "@/components/PharmacySidebar";
 import AlertsClient from "./AlertsClient";
@@ -19,11 +20,14 @@ export default async function AlertsPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("id, name")
+    .select("id, name, subscription_status, subscription_expires_at, trial_ends_at")
     .eq("auth_user_id", user.id)
     .single();
 
   if (!account) redirect("/auth?next=/dashboard/alerts");
+
+  // Notification feed is part of the pharmacy subscription.
+  if (!isSubscribedActive(account)) redirect("/dashboard/billing");
 
   const [{ data: alerts, error }, { data: notifications }] = await Promise.all([
     getPharmacyAlerts(),

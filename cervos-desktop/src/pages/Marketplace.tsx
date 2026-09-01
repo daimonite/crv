@@ -27,6 +27,15 @@ const WEB_URL =
   (import.meta.env.VITE_APP_URL as string | undefined) ||
   'https://cervos.online'
 
+interface ConnectionRequest {
+  id: string
+  supplierId: string
+  supplierName: string
+  status: 'pending' | 'approved' | 'rejected'
+  requestedAt: string
+  decidedAt: string | null
+}
+
 export default function Marketplace() {
   const [products, setProducts] = useState<MarketplaceProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,11 +46,68 @@ export default function Marketplace() {
   const [showCart, setShowCart] = useState(false)
   const [placing, setPlacing] = useState(false)
   const [walletMsisdn, setWalletMsisdn] = useState('')
+  const [activeTab, setActiveTab] = useState<'browse' | 'connections'>('browse')
+  const [connections, setConnections] = useState<ConnectionRequest[]>([])
+  const [connectionsLoading, setConnectionsLoading] = useState(false)
+  const [connectionsError, setConnectionsError] = useState<string | null>(null)
 
   useEffect(() => {
     loadProducts()
     loadWallet()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'connections') loadConnections()
+  }, [activeTab])
+
+  async function loadConnections() {
+    setConnectionsLoading(true)
+    setConnectionsError(null)
+    try {
+      const branchRes = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchId = branchRes.length > 0 ? JSON.parse(branchRes[0].value) as string : null
+      if (!branchId) {
+        setConnectionsError('No branch linked. Please link your pharmacy branch in Settings.')
+        return
+      }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setConnectionsError('Not signed in — sign in to view connection requests.')
+        return
+      }
+      const res = await fetch(`${WEB_URL}/api/marketplace/connections?branchId=${encodeURIComponent(branchId)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const json = await res.json() as { connections?: ConnectionRequest[]; error?: string }
+      if (!res.ok) throw new Error(json.error || `Failed to load connections (${res.status})`)
+      setConnections(json.connections ?? [])
+    } catch (e) {
+      setConnectionsError(e instanceof Error ? e.message : 'Failed to load connection requests')
+    } finally {
+      setConnectionsLoading(false)
+    }
+  }
+
+  async function respondToConnection(connectionId: string, status: 'approved' | 'rejected') {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('Not signed in. Please sign in again.')
+        return
+      }
+      const res = await fetch(`${WEB_URL}/api/marketplace/connections`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ connectionId, status }),
+      })
+      const json = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(json.error || `Failed (${res.status})`)
+      loadConnections()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to update connection request')
+    }
+  }
+
 
   async function loadWallet() {
     try {
@@ -251,20 +317,116 @@ export default function Marketplace() {
   }
 
   return (
-    <div className="p-6">
+      <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-headline text-2xl font-black text-on-surface">Marketplace</h1>
           <p className="text-sm text-on-surface-variant mt-1">Browse products from suppliers — escrow payment via Payme Africa</p>
         </div>
+        {activeTab === 'browse' && (
+          <button
+            onClick={() => setShowCart(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:opacity-90"
+          >
+            <span className="material-symbols-outlined">shopping_cart</span>
+            Cart ({cart.length})
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 mb-6 border-b border-outline-variant">
         <button
-          onClick={() => setShowCart(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:opacity-90"
+          onClick={() => setActiveTab('browse')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${activeTab === 'browse' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant'}`}
         >
-          <span className="material-symbols-outlined">shopping_cart</span>
-          Cart ({cart.length})
+          Browse
+        </button>
+        <button
+          onClick={() => setActiveTab('connections')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${activeTab === 'connections' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant'}`}
+        >
+          Connection Requests
+          {connections.filter((c) => c.status === 'pending').length > 0 && (
+            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-600 text-white text-xs">
+              {connections.filter((c) => c.status === 'pending').length}
+            </span>
+          )}
         </button>
       </div>
+
+      {activeTab === 'connections' ? (
+        <div>
+          <p className="text-sm text-on-surface-variant mb-4">
+            Suppliers must be approved here before this branch can place orders with them.
+            Browsing their catalog in the Marketplace stays open either way.
+          </p>
+          {connectionsError && (
+            <div className="mb-4 p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm flex items-center justify-between">
+              <span>{connectionsError}</span>
+              <button onClick={loadConnections} className="ml-4 px-3 py-1 rounded bg-error text-white text-xs font-semibold">Retry</button>
+            </div>
+          )}
+          {connectionsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+            </div>
+          ) : connections.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-on-surface-variant">
+              <span className="material-symbols-outlined text-5xl">link_off</span>
+              <p className="mt-2">No connection requests yet</p>
+            </div>
+          ) : (
+            <div className="bg-surface-base border border-outline-variant rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-outline-variant/50">
+                  <tr className="text-left text-xs font-semibold text-on-surface-variant uppercase">
+                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Requested</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {connections.map((c) => (
+                    <tr key={c.id} className="border-t border-outline-variant">
+                      <td className="px-4 py-3 font-medium text-sm">{c.supplierName}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          c.status === 'approved' ? 'bg-green-600/20 text-green-700' :
+                          c.status === 'rejected' ? 'bg-error/20 text-error' :
+                          'bg-amber-600/20 text-amber-700'
+                        }`}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-on-surface-variant">{new Date(c.requestedAt).toLocaleDateString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        {c.status === 'pending' && (
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => respondToConnection(c.id, 'approved')}
+                              className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:opacity-90"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => respondToConnection(c.id, 'rejected')}
+                              className="px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold hover:bg-error/10"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm flex items-center justify-between">
@@ -396,6 +558,8 @@ export default function Marketplace() {
           </div>
         </div>
       )}
-    </div>
+      </>
+      )}
+      </div>
   )
 }

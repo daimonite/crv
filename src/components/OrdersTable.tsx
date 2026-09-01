@@ -20,6 +20,14 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-50 text-red-700",
 };
 
+interface OrderLineItem {
+  id: string;
+  order_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+}
+
 export default function OrdersTable({ orders }: OrdersTableProps) {
   const { t } = useI18n();
   const router = useRouter();
@@ -27,12 +35,16 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [orderDetail, setOrderDetail] = useState<unknown>(null);
+  const [orderDetail, setOrderDetail] = useState<{ order_items: OrderLineItem[] } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [payWallet, setPayWallet] = useState("");
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payMessage, setPayMessage] = useState<string | null>(null);
 
   const filtered = orders.filter((o) => {
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
-    const created = o.created_at?.split("T")[0] ?? "";
+    const created = o.placed_at?.split("T")[0] ?? "";
     const matchDateFrom = !dateFrom || created >= dateFrom;
     const matchDateTo = !dateTo || created <= dateTo;
     return matchStatus && matchDateFrom && matchDateTo;
@@ -41,9 +53,16 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   const handleRowClick = async (order: Order) => {
     setSelectedOrder(order);
     setLoadingDetail(true);
-    const res = await fetch(`/api/actions/orders?orderId=${order.id}`);
-    const data = await res.json();
-    setOrderDetail(data);
+    setPayMessage(null);
+    setPayError(null);
+    setPayWallet("");
+    try {
+      const res = await fetch(`/api/actions/orders?orderId=${order.id}`);
+      const data = await res.json();
+      setOrderDetail(data);
+    } catch {
+      setOrderDetail(null);
+    }
     setLoadingDetail(false);
   };
 
@@ -52,12 +71,44 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
     setOrderDetail(null);
   };
 
+  const payOrder = async () => {
+    if (!selectedOrder) return;
+    const msisdn = payWallet.trim();
+    if (!/^(0[67]\d{8}|\+255[67]\d{8})$/.test(msisdn)) {
+      setPayError("Enter a valid mobile-money number, e.g. 0712 345 678 or +255712345678.");
+      return;
+    }
+    setPayBusy(true);
+    setPayError(null);
+    setPayMessage(null);
+    try {
+      const res = await fetch("/api/marketplace/pay-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: selectedOrder.id, msisdn }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPayError(data.error ?? "Payment could not be started.");
+      } else {
+        setPayMessage(data.payment?.message ?? "Payment initiated.");
+        if (data.payment?.status === "completed") {
+          setTimeout(() => router.refresh(), 800);
+        }
+      }
+    } catch {
+      setPayError("Network error — try again.");
+    }
+    setPayBusy(false);
+  };
+
   const exportCsv = () => {
-    const headers = ["Order Number", "Date", "Supplier", "Total", "Status"];
+    const headers = ["Order Number", "Date", "Branch", "Supplier", "Total", "Status"];
     const rows = filtered.map((o) => [
-      o.id,
-      o.created_at?.split("T")[0] ?? "",
-      (o.suppliers as unknown as { company_name: string } | null)?.company_name ?? "—",
+      o.order_reference ?? o.id,
+      o.placed_at?.split("T")[0] ?? "",
+      o.branch_name ?? "—",
+      o.supplier_name ?? "—",
       o.total?.toFixed(2) ?? "0.00",
       o.status,
     ]);
@@ -125,6 +176,9 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                 {t("dash.orders.date")}
               </th>
               <th className="text-left px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
+                Branch
+              </th>
+              <th className="text-left px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
                 {t("dash.orders.supplier")}
               </th>
               <th className="text-right px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
@@ -138,7 +192,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
           <tbody className="divide-y divide-outline-variant/30">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant text-sm">
+                <td colSpan={6} className="px-6 py-12 text-center text-on-surface-variant text-sm">
                   {t("dash.orders.noOrders")}
                 </td>
               </tr>
@@ -151,14 +205,17 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                 >
                   <td className="px-6 py-4">
                     <span className="font-mono text-sm text-primary">
-                      #{order.id.slice(0, 8).toUpperCase()}
+                      {order.order_reference ?? `#${order.id.slice(0, 8).toUpperCase()}`}
                     </span>
                   </td>
                   <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant">
-                    {order.created_at ? new Date(order.created_at).toLocaleDateString() : "—"}
+                    {order.placed_at ? new Date(order.placed_at).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant">
-                    {(order.suppliers as unknown as { company_name: string } | null)?.company_name ?? "—"}
+                    {order.branch_name ?? "—"}
+                  </td>
+                  <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant">
+                    {order.supplier_name ?? "—"}
                   </td>
                   <td className="px-6 py-4 text-right font-body-md text-body-md">
                     {typeof order.total === "number" ? `TSh ${order.total.toLocaleString()}` : "—"}
@@ -180,7 +237,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
           <div className="bg-surface-base rounded-lg border border-outline-variant w-full max-w-lg p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-headline-md text-headline-md text-ink-deep">
-                {t("dash.orders.orderDetails")} #{selectedOrder.id.slice(0, 8).toUpperCase()}
+                {t("dash.orders.orderDetails")} {selectedOrder.order_reference ?? selectedOrder.id.slice(0, 8).toUpperCase()}
               </h2>
               <button onClick={closeDetail} className="p-1 hover:bg-surface-container rounded">
                 <span className="material-symbols-outlined text-[20px] text-on-surface-variant">close</span>
@@ -195,7 +252,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                   <div>
                     <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-1">{t("dash.orders.date")}</p>
                     <p className="text-ink-deep">
-                      {selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleDateString() : "—"}
+                      {selectedOrder.placed_at ? new Date(selectedOrder.placed_at).toLocaleDateString() : "—"}
                     </p>
                   </div>
                   <div>
@@ -204,20 +261,24 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                       {selectedOrder.status}
                     </span>
                   </div>
+                  <div>
+                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-1">Branch</p>
+                    <p className="text-ink-deep">{selectedOrder.branch_name ?? "—"}</p>
+                  </div>
                   <div className="col-span-2">
                     <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-1">{t("dash.orders.supplier")}</p>
-                    <p className="text-ink-deep">{(selectedOrder.suppliers as unknown as { company_name: string } | null)?.company_name ?? "—"}</p>
+                    <p className="text-ink-deep">{selectedOrder.supplier_name ?? "—"}</p>
                   </div>
                 </div>
 
                 <div>
                   <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-3">{t("dash.orders.items")}</p>
-                  {Array.isArray((orderDetail as { order_items?: unknown[] }).order_items) && (
+                  {Array.isArray(orderDetail.order_items) && orderDetail.order_items.length > 0 ? (
                     <div className="divide-y divide-outline-variant/30">
-                      {((orderDetail as { order_items: { quantity: number; unit_price: number; products: { generic_name: string } | null }[] }).order_items).map((item: { quantity: number; unit_price: number; products: { generic_name: string } | null }, i: number) => (
-                        <div key={i} className="py-3 flex items-center justify-between">
+                      {orderDetail.order_items.map((item, i) => (
+                        <div key={item.id || i} className="py-3 flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-ink-deep">{item.products?.generic_name ?? "—"}</p>
+                            <p className="text-sm text-ink-deep">{item.product_name ?? "—"}</p>
                             <p className="text-xs text-on-surface-variant">{item.quantity} × TSh {item.unit_price.toLocaleString()}</p>
                           </div>
                           <p className="text-sm font-medium text-ink-deep">
@@ -226,6 +287,8 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-on-surface-variant">No items.</p>
                   )}
                 </div>
 
@@ -235,6 +298,36 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                     TSh {typeof selectedOrder.total === "number" ? selectedOrder.total.toLocaleString() : "0"}
                   </p>
                 </div>
+
+                {selectedOrder.status === "pending" && (
+                  <div className="border-t border-outline-variant pt-4">
+                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">
+                      Pay order via mobile money
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        value={payWallet}
+                        onChange={(e) => setPayWallet(e.target.value)}
+                        placeholder="0712 345 678 or +255712345678"
+                        className="flex-1 px-3 py-2 bg-surface-base border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        onClick={payOrder}
+                        disabled={payBusy}
+                        className="px-4 py-2 bg-primary text-on-primary font-label-md text-label-md disabled:opacity-60 flex items-center gap-1"
+                      >
+                        {payBusy ? (
+                          <div className="w-4 h-4 border border-on-primary/40 border-t-on-primary rounded-full animate-spin" />
+                        ) : (
+                          <span className="material-symbols-outlined text-[16px]">smartphone</span>
+                        )}
+                        Pay
+                      </button>
+                    </div>
+                    {payError && <p className="mt-2 text-xs text-error">{payError}</p>}
+                    {payMessage && <p className="mt-2 text-xs text-success">{payMessage}</p>}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

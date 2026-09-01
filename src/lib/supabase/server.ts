@@ -143,3 +143,24 @@ export async function createServiceClient(): Promise<SupabaseServerClient> {
     { cookies: cookieMethods(cookieStore) }
   );
 }
+
+/**
+ * Creates a service-role client explicitly configured for Auth admin operations
+ * (e.g. `auth.admin.createUser`, `auth.admin.deleteUser`) used when provisioning
+ * web-login operator accounts for the /branch portal.
+ *
+ * Session persistence is disabled so the admin token is never minted into a
+ * browser cookie. NEVER expose this client to client components.
+ */
+export async function createAdminClient(): Promise<SupabaseServerClient> {
+  const cookieStore = await cookies();
+  if (IS_MOCK) return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: cookieMethods(cookieStore),
+      auth: { autoRefreshToken: false, persistSession: false },
+    }
+  );
+}

@@ -292,7 +292,7 @@ async function bulkPush(): Promise<{ uploaded: number; failed: number }> {
     const [table_name, operation] = key.split(':')
     const entries = groups[key]
     try {
-      if (operation === 'insert' || operation === 'update') {
+      if (operation === 'insert' || operation === 'update' || operation === 'upsert') {
         const rows = entries.map((e) => e.payload)
         const { error } = await Ie.from(table_name).upsert(rows, { onConflict: 'id' })
         if (error) throw error
@@ -376,6 +376,20 @@ async function applyPulledData(data: any): Promise<void> {
       updated_at: b.updated_at,
     })
   }
+  for (const op of data.operators || []) {
+    await upsertLocal('operators', {
+      id: op.id,
+      branch_id: op.branch_id,
+      name: op.name,
+      pin_hash: op.pin_hash,
+      role: op.role,
+      created_at: op.created_at ?? null,
+    })
+  }
+  // NOTE: this only creates/updates operators locally. An operator deleted on the
+  // web dashboard is NOT removed from the desktop's local SQLite by this cycle —
+  // reconciling deletes safely (without racing a not-yet-pushed local create) needs
+  // a tombstone/deleted_at approach on the operators table, not implemented here.
   for (const cmd of data.commands || []) {
     await applyCommand(cmd)
   }
@@ -410,7 +424,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
 
     const since = (await getLastPullTimestamp(branchId)) || '1970-01-01T00:00:00Z'
 
-    const [prodRes, batchRes, cmdRes, branchRes] = await Promise.all([
+    const [prodRes, batchRes, cmdRes, branchRes, opRes] = await Promise.all([
       Ie.from('products').select('*').gt('updated_at', since),
       Ie.from('batches').select('*').eq('branch_id', branchId).gt('updated_at', since),
       Ie.from('branch_commands').select('*').eq('branch_id', branchId).eq('status', 'pending'),
@@ -418,16 +432,20 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
         .select('subscription_status, subscription_tier, grace_ends_at, trial_ends_at, locked_reason')
         .eq('id', branchId)
         .maybeSingle(),
+      // operators has no updated_at column to filter incrementally on, and per-branch
+      // counts are small, so pull the full set for this branch every cycle.
+      Ie.from('operators').select('*').eq('branch_id', branchId),
     ])
 
     const products = prodRes.data || []
     const batches = batchRes.data || []
     const commands = cmdRes.data || []
     const branch = branchRes.data || null
+    const operators = opRes.data || []
 
-    const pulled = products.length + batches.length + commands.length
+    const pulled = products.length + batches.length + commands.length + operators.length
 
-    await applyPulledData({ products, batches, commands, branch })
+    await applyPulledData({ products, batches, commands, branch, operators })
 
     if (commands.length > 0) {
       await Ie.from('branch_commands')

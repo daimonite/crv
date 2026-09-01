@@ -10,6 +10,7 @@ interface Plan {
   price_annual_tzs: number;
   max_branches: number;
   max_operators: number;
+  max_suppliers: number;
   features: string[];
 }
 
@@ -26,6 +27,7 @@ interface BillingClientProps {
   currentPlanName?: string;
   plans: Plan[];
   branchCount: number;
+  connectedSuppliers?: number;
   selectPlanAction: (planId: string) => Promise<{ error: string | null; suspendedBranchIds?: string[] }>;
 }
 
@@ -55,6 +57,7 @@ export default function BillingClient({
   currentPlanName,
   plans,
   branchCount,
+  connectedSuppliers = 0,
   selectPlanAction,
 }: BillingClientProps) {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
@@ -114,6 +117,14 @@ export default function BillingClient({
             <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Branches</p>
           </div>
           <p className="font-headline-md text-headline-md text-ink-deep">{branchCount}</p>
+        </div>
+
+        <div className="bg-surface-base border border-outline-variant rounded p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-[20px] text-primary">hub</span>
+            <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Suppliers</p>
+          </div>
+          <p className="font-headline-md text-headline-md text-ink-deep">{connectedSuppliers}</p>
         </div>
       </div>
 
@@ -175,6 +186,10 @@ export default function BillingClient({
                   <span className="text-on-surface-variant">Max Operators</span>
                   <span className="font-mono text-ink-deep">{plan.max_operators}</span>
                 </div>
+                <div className="flex justify-between font-body-sm">
+                  <span className="text-on-surface-variant">Max Suppliers</span>
+                  <span className="font-mono text-ink-deep">{plan.max_suppliers >= 999999 ? "∞" : plan.max_suppliers}</span>
+                </div>
               </div>
 
               <div className="flex-1 mb-4">
@@ -193,6 +208,11 @@ export default function BillingClient({
                 <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
                   <span className="material-symbols-outlined text-[14px] align-middle mr-1">warning</span>
                   Your {branchCount} branches exceed this plan&apos;s limit of {plan.max_branches}. Downgrading will lock {branchCount - plan.max_branches} branch{branchCount - plan.max_branches > 1 ? "es" : ""}.
+                  {connectedSuppliers > plan.max_suppliers && plan.max_suppliers < 999999 && (
+                    <span className="block mt-1">
+                      You also have {connectedSuppliers} connected suppliers — this plan allows {plan.max_suppliers}. Extra connections must be removed first.
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -232,6 +252,13 @@ export default function BillingClient({
                     <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700">
                       <span className="material-symbols-outlined text-[16px] align-middle mr-1">warning</span>
                       This plan supports up to {plan.max_branches} branch{plan.max_branches > 1 ? "es" : ""}, but you have {branchCount}. The oldest {branchCount - plan.max_branches} branch{branchCount - plan.max_branches > 1 ? "es" : ""} will be locked.
+                    </div>
+                  )}
+
+                  {connectedSuppliers > plan.max_suppliers && plan.max_suppliers < 999999 && (
+                    <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700">
+                      <span className="material-symbols-outlined text-[16px] align-middle mr-1">warning</span>
+                      You have {connectedSuppliers} connected suppliers, but this plan allows {plan.max_suppliers}. Extra connections will need to be removed.
                     </div>
                   )}
 

@@ -16,6 +16,9 @@ type OperatorForm = {
   pin: string;
   role: "admin" | "operator";
   branch_id: string;
+  email: string;
+  password: string;
+  web_enabled: boolean;
 };
 
 type ModalState = {
@@ -23,7 +26,15 @@ type ModalState = {
   operator: Operator | null;
 };
 
-const EMPTY_FORM: OperatorForm = { name: "", pin: "", role: "operator", branch_id: "" };
+const EMPTY_FORM: OperatorForm = {
+  name: "",
+  pin: "",
+  role: "operator",
+  branch_id: "",
+  email: "",
+  password: "",
+  web_enabled: false,
+};
 
 export default function OperatorsTable({ operators, branches }: OperatorsTableProps) {
   const { t } = useI18n();
@@ -50,13 +61,21 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
   };
 
   const openEdit = (op: Operator) => {
-    setForm({ name: op.name, pin: "", role: op.role, branch_id: op.branch_id });
+    setForm({
+      name: op.name,
+      pin: "",
+      role: op.role,
+      branch_id: op.branch_id,
+      email: op.email ?? "",
+      password: "",
+      web_enabled: !!op.web_enabled,
+    });
     setError(null);
     setModal({ mode: "edit", operator: op });
   };
 
   const openReset = (op: Operator) => {
-    setForm({ name: op.name, pin: "", role: op.role, branch_id: op.branch_id });
+    setForm({ name: op.name, pin: "", role: op.role, branch_id: op.branch_id, email: op.email ?? "", password: "", web_enabled: !!op.web_enabled });
     setError(null);
     setModal({ mode: "reset", operator: op });
   };
@@ -75,7 +94,16 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
       const res = await fetch("/api/actions/operators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", ...form }),
+        body: JSON.stringify({
+          action: "create",
+          name: form.name,
+          pin: form.pin,
+          role: form.role,
+          branch_id: form.branch_id,
+          email: form.web_enabled ? form.email : undefined,
+          password: form.web_enabled ? form.password : undefined,
+          web_enabled: form.web_enabled,
+        }),
       });
       const data = await res.json();
       if (data.error) {
@@ -88,7 +116,12 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
         name: form.name,
         role: form.role,
         branch_id: form.branch_id,
+        web_enabled: form.web_enabled,
       };
+      if (form.web_enabled && form.email) {
+        updates.email = form.email;
+        if (form.password) updates.password = form.password;
+      }
       const res = await fetch("/api/actions/operators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,6 +222,9 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
               <th className="text-left px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
                 {t("dash.operators.branch")}
               </th>
+              <th className="text-left px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
+                Web access
+              </th>
               <th className="text-right px-6 py-3 font-label-md text-label-md text-on-surface-variant text-xs uppercase tracking-wider">
                 {t("dash.operators.actions")}
               </th>
@@ -197,7 +233,7 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
           <tbody className="divide-y divide-outline-variant/30">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-on-surface-variant text-sm">
+                <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant text-sm">
                   {t("dash.operators.noOperators")}
                 </td>
               </tr>
@@ -219,6 +255,19 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
                   </td>
                   <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant">
                     {op.branch_name ?? "—"}
+                  </td>
+                  <td className="px-6 py-4">
+                    {op.web_enabled && op.email ? (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-label-md bg-secondary/10 text-secondary">
+                          <span className="material-symbols-outlined text-[12px] mr-1">language</span>
+                          Web
+                        </span>
+                        <span className="text-xs text-on-surface-variant truncate max-w-[160px]">{op.email}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-on-surface-variant/60">POS only</span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
@@ -342,6 +391,49 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
                       ))}
                     </select>
                   </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.web_enabled}
+                      onChange={(e) => setForm({ ...form, web_enabled: e.target.checked })}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <span className="font-label-md text-label-md text-ink-deep">
+                      Web portal login at /branch
+                    </span>
+                  </label>
+                  {form.web_enabled && (
+                    <div className="grid grid-cols-1 gap-4 pl-6 border-l border-outline-variant">
+                      <div>
+                        <label className="block font-label-md text-label-md text-on-surface-variant mb-1.5">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={form.email}
+                          onChange={(e) => setForm({ ...form, email: e.target.value })}
+                          placeholder="operator@pharmacy.co.tz"
+                          className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-label-md text-label-md text-on-surface-variant mb-1.5">
+                          {modal.mode === "edit" ? "New password (leave blank to keep)" : "Password"}
+                        </label>
+                        <input
+                          type="password"
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
+                          placeholder="Min 8 characters"
+                          className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <p className="text-xs text-on-surface-variant">
+                        The operator signs in at <span className="font-mono">/branch</span> with this email and password to manage stock, orders and payments for their branch.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
             </div>

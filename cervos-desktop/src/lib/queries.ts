@@ -1,4 +1,5 @@
 ﻿import { queryDb, executeDb, generateId } from './database'
+import { queueForSync } from './sync'
 import type { Operator, Branch } from '../types'
 
 export async function fetchOperator(id: string): Promise<Operator | null> {
@@ -29,11 +30,15 @@ export async function createOperator(data: {
 }): Promise<Operator> {
   const id = generateId()
   const pinHash = await hashPin(data.pin)
+  const created_at = new Date().toISOString()
   await executeDb(
     'INSERT INTO operators (id, branch_id, name, pin_hash, role, created_at) VALUES (?,?,?,?,?,?)',
-    [id, data.branch_id, data.name, pinHash, data.role, new Date().toISOString()]
+    [id, data.branch_id, data.name, pinHash, data.role, created_at]
   )
-  return { id, branch_id: data.branch_id, name: data.name, pin_hash: pinHash, role: data.role, created_at: new Date().toISOString() }
+  await queueForSync('operators', id, 'insert', {
+    id, branch_id: data.branch_id, name: data.name, pin_hash: pinHash, role: data.role, created_at,
+  })
+  return { id, branch_id: data.branch_id, name: data.name, pin_hash: pinHash, role: data.role, created_at }
 }
 
 export async function updateOperator(id: string, data: { name?: string; pin?: string; role?: 'admin' | 'operator' }): Promise<void> {
@@ -47,10 +52,18 @@ export async function updateOperator(id: string, data: { name?: string; pin?: st
   if (data.role !== undefined) {
     await executeDb('UPDATE operators SET role = ? WHERE id = ?', [data.role, id])
   }
+  const updated = await fetchOperator(id)
+  if (updated) {
+    await queueForSync('operators', id, 'update', {
+      id: updated.id, branch_id: updated.branch_id, name: updated.name, pin_hash: updated.pin_hash,
+      role: updated.role, created_at: updated.created_at,
+    })
+  }
 }
 
 export async function deleteOperator(id: string): Promise<void> {
   await executeDb('DELETE FROM operators WHERE id = ?', [id])
+  await queueForSync('operators', id, 'delete', { id })
 }
 
 export async function fetchBranch(id: string): Promise<Branch | null> {

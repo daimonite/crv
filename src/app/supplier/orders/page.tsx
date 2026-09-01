@@ -7,6 +7,7 @@
  */
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSubscribedActive } from "@/lib/subscription";
 import SupplierSidebar from "@/components/SupplierSidebar";
 import SupplierOrdersTable, { type SupplierOrder } from "@/components/SupplierOrdersTable";
 import { getSupplierOrders } from "@/lib/actions/supplier";
@@ -20,12 +21,15 @@ export default async function SupplierOrdersPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("name, type")
+    .select("name, type, subscription_status, subscription_expires_at, trial_ends_at")
     .eq("auth_user_id", user.id)
     .single();
 
   // Enforce supplier-only access
   if (account?.type !== "supplier") redirect("/dashboard");
+
+  // Subscription paywall: orders are gated behind an active supplier plan.
+  if (!isSubscribedActive(account)) redirect("/supplier/subscription");
 
   const orders = await getSupplierOrders();
   const pendingCount = orders.filter((o) => o.status === "pending").length;

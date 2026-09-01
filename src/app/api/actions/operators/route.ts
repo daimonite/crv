@@ -29,30 +29,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const { data: accountBranches } = await supabase
-    .from("branches")
-    .select("id")
-    .eq("account_id", account.id);
-
-  const branchIds = (accountBranches ?? []).map((b) => b.id);
-
-  let isCallerAdmin = true;
-  if (branchIds.length > 0) {
-    const { data: callerOps } = await supabase
-      .from("operators")
-      .select("role")
-      .in("branch_id", branchIds);
-
-    isCallerAdmin = (callerOps ?? []).some((op) => op.role === "admin");
-  }
-
   const body = await req.json();
   const { action } = body;
-
-  const mutatingActions = ["create", "update", "delete", "resetPin"];
-  if (mutatingActions.includes(action) && !isCallerAdmin) {
-    return NextResponse.json({ error: "Only admins can manage operators." }, { status: 403 });
-  }
 
   if (action === "create") {
     const { name, pin, role, branch_id } = body;

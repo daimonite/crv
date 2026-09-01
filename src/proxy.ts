@@ -85,7 +85,8 @@ export async function proxy(request: NextRequest) {
   // /supplier/quote is the PUBLIC lead-gen form — do not protect it
   // /download is a public product page — no account needed to download the endpoint app.
   // After installing, the desktop app guides users to link to an admin account.
-  const protectedPrefixes = ["/dashboard", "/supplier"];
+  // /branch is the operator web portal — identity enforced in src/app/branch/layout.tsx
+  const protectedPrefixes = ["/dashboard", "/supplier", "/branch"];
   const publicExceptions  = ["/supplier/quote"];
   const isProtected =
     protectedPrefixes.some((p) => pathname.startsWith(p)) &&

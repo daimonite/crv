@@ -6,6 +6,7 @@
  */
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSubscribedActive } from "@/lib/subscription";
 import SupplierSidebar from "@/components/SupplierSidebar";
 import { getT } from "@/lib/i18n/server";
 
@@ -26,11 +27,14 @@ export default async function SupplierActivityPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("id, name, type")
+    .select("id, name, type, subscription_status, subscription_expires_at, trial_ends_at")
     .eq("auth_user_id", user.id)
     .single();
 
   if (account?.type !== "supplier") redirect("/dashboard");
+
+  // Subscription paywall: activity history is part of the supplier plan.
+  if (!isSubscribedActive(account)) redirect("/supplier/subscription");
 
   const { data: activityData } = await supabase
     .from("activity_log")

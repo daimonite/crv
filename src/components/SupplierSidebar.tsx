@@ -46,6 +46,7 @@ export default function SupplierSidebar({ accountName, logoUrl }: SupplierSideba
     { labelKey: "sup.alerts",         href: "/supplier/alerts",        icon: "notifications_active" },
     { labelKey: "sup.analytics",      href: "/supplier/analytics",    icon: "monitoring" },
     { labelKey: "sup.storefront",     href: "/supplier/storefront",    icon: "storefront" },
+    { labelKey: "sup.connections",    href: "/supplier/connections",  icon: "hub" },
     { labelKey: "sup.subscription",   href: "/supplier/subscription", icon: "workspace_premium" },
     { labelKey: "sup.activity",       href: "/supplier/activity",      icon: "history" },
     { labelKey: "portal.settings",    href: "/supplier/settings",      icon: "settings" },

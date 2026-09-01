@@ -28,7 +28,21 @@ export async function GET(request: Request) {
       // looks up `accounts` by `auth_user_id` fails silently, producing a
       // blank dashboard for the new user. This is a defensive, idempotent
       // fallback: create the row here if the trigger hasn't already done it.
+      // Branch-portal operators (email+password web logins provisioned from
+      // /dashboard/operators) land on the branch portal, not the pharmacy HQ.
       const serviceClientForAccount = await createServiceClient();
+      const { data: operatorMatch } = await serviceClientForAccount
+        .from("operators")
+        .select("id")
+        .eq("auth_user_id", data.session.user.id)
+        .eq("web_enabled", true)
+        .maybeSingle();
+
+      if (operatorMatch) {
+        const redirectTo = next && next !== "/dashboard" ? next : "/branch";
+        return NextResponse.redirect(`${origin}${redirectTo}`);
+      }
+
       const { data: existingAccount } = await serviceClientForAccount
         .from("accounts")
         .select("id")
