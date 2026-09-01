@@ -10,7 +10,8 @@ function computeExpectedSignature(payload: string, timestamp: string): string {
   const crypto = require("crypto");
   const hmac = crypto.createHmac("sha256", HMAC_SECRET);
   hmac.update(payload + timestamp);
-  return Buffer.from(hmac.digest("hex")).toString("base64");
+  // Payme spec: Base64( HMAC_SHA256( Payload + X-Timestamp, Secret ) ) on raw digest bytes.
+  return hmac.digest("base64");
 }
 
 describe("verifyWebhookSignature", () => {

@@ -30,7 +30,7 @@
  */
 
 import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 import { createMockSupabase, mockUserForType } from "@/lib/mock/supabase";
@@ -129,18 +129,31 @@ export async function createClient(): Promise<SupabaseServerClient> {
  * validated the HQ session cookie via `assertHQAuth()`. Never expose this client
  * to user-facing code or return its raw output to the browser.
  *
- * Note: Cookies are still passed for consistency with `@supabase/ssr` requirements,
- * but the service-role key is what grants elevated access — not the user session.
+ * IMPORTANT: This is built with the plain `@supabase/supabase-js` client, not
+ * `@supabase/ssr`'s `createServerClient`. `@supabase/ssr` is designed to read
+ * the caller's session cookies, and when a session is present it substitutes
+ * that user's session token for the `Authorization` header regardless of which
+ * key you pass in — the service-role key only ends up used as the `apikey`
+ * header. That means Postgres still sees the request as the logged-in user,
+ * not `service_role`, so RLS policies scoped to `service_role` reject it (this
+ * is the cause of "new row violates row-level security policy" errors even
+ * with a valid service key). Using the plain client here means no cookies are
+ * read at all — the service-role key is the only credential in play, and
+ * `supabase.auth.getUser()` will NOT work on this client (no session exists).
+ * Callers that need the caller's identity must resolve it separately via
+ * `createClient()` and pass the resulting user id in.
  *
- * @returns Service-role server client (bypasses RLS)
+ * @returns Service-role client (bypasses RLS, no user session)
  */
 export async function createServiceClient(): Promise<SupabaseServerClient> {
-  const cookieStore = await cookies();
-  if (IS_MOCK) return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
-  return createServerClient(
+  if (IS_MOCK) {
+    const cookieStore = await cookies();
+    return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
+  }
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { cookies: cookieMethods(cookieStore) }
+    { auth: { autoRefreshToken: false, persistSession: false } }
   );
 }
 

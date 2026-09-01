@@ -317,6 +317,7 @@ export const strings: Record<string, Record<Lang, string>> = {
   "mkt.quote.empty":   { EN: "No items added yet.", SW: "Hakuna bidhaa zilizoongezwa bado." },
   "mkt.quote.total":   { EN: "Estimated Total", SW: "Jumla ya Makadirio" },
   "mkt.quote.submit":  { EN: "Submit Quote Request", SW: "Wasilisha Ombi la Nukuu" },
+  "mkt.checkout.branch_label": { EN: "Ordering branch", SW: "Tawi linaloagiza" },
   "mkt.checkout.wallet_label": { EN: "Payme wallet (charged on order)", SW: "Mkoba wa Payme (itakayotozwa)" },
   "mkt.checkout.escrow_note": { EN: "Payment held in escrow via Payme Africa until delivery.", SW: "Malipo yatawekwa kwenye escrow kupitia Payme Africa hadi uwasilishaji." },
   "mkt.checkout.place_order": { EN: "Place Order & Pay", SW: "Weka Oda na Lipa" },

@@ -157,7 +157,7 @@ export default function PaymentSettingsForm({ accountType, accountId, initial }:
         <div className="space-y-2">
           {methods.map(m => {
             const isOn = acceptedMethods.includes(m.value);
-            const isForced = accountType === "pharmacy" && m.value === "cash";
+            const isForced = accountType === "pharmacy" && m.value === "cash" && isOn;
             return (
               <div
                 key={m.value}

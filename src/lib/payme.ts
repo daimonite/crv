@@ -71,7 +71,9 @@ function computeSignature(body: string, timestamp: string): string {
   const crypto = require("crypto");
   const hmac = crypto.createHmac("sha256", APP_SECRET);
   hmac.update(body + timestamp);
-  return Buffer.from(hmac.digest("hex")).toString("base64");
+  // Payme spec: Base64( HMAC_SHA256( Payload + X-Timestamp, Secret ) ) — base64
+  // of the raw digest bytes, not a base64 re-encoding of the hex digest string.
+  return hmac.digest("base64");
 }
 
 function getHeaders(body: string): Record<string, string> {
@@ -174,9 +176,12 @@ export function verifyWebhookSignature(
   signature: string
 ): boolean {
   const crypto = require("crypto");
-  const expected = Buffer.from(
-    crypto.createHmac("sha256", APP_SECRET).update(payload + timestamp).digest("hex")
-  ).toString("base64");
+  // Payme spec: Base64( HMAC_SHA256( Payload + X-Timestamp, Secret ) ) — base64
+  // of the raw digest bytes, matching the X-Middleware-Signature header.
+  const expected = crypto
+    .createHmac("sha256", APP_SECRET)
+    .update(payload + timestamp)
+    .digest("base64");
 
   if (signature !== expected) return false;
 

@@ -6,7 +6,7 @@
  * a 30-day subscription, and plan switching.
  */
 import { redirect } from "next/navigation";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlans, isSubscribedActive } from "@/lib/subscription";
 import { selectPlan } from "@/lib/actions/pharmacy";
 import PharmacySidebar from "@/components/PharmacySidebar";
@@ -17,11 +17,13 @@ import { getT } from "@/lib/i18n/server";
 export default async function BillingPage() {
   const t = await getT();
 
-  const supabase = await createServiceClient();
+  const authClient = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
   if (!user) redirect("/auth?next=/dashboard/billing");
+
+  const supabase = await createServiceClient();
 
   const { data: account } = await supabase
     .from("accounts")

@@ -32,8 +32,7 @@ export default async function MarketplacePage() {
   const { data: branches } = await supabase
     .from("branches")
     .select("id, name")
-    .eq("account_id", account?.id ?? "")
-    .limit(1);
+    .eq("account_id", account?.id ?? "");
 
   const products = await getMarketplaceProducts();
 
@@ -61,7 +60,7 @@ export default async function MarketplacePage() {
         <div className="pt-16 flex-1 flex">
           <MarketplaceBrowser
             products={products as SupplierProduct[]}
-            buyerBranchId={branches?.[0]?.id ?? ""}
+            branches={branches ?? []}
           />
         </div>
       </div>

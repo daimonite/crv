@@ -5,18 +5,20 @@
  * full-width Leaflet map, plus a connected-suppliers panel with plan usage.
  */
 import { redirect } from "next/navigation";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isSubscribedActive } from "@/lib/subscription";
 import PharmacySidebar from "@/components/PharmacySidebar";
 import Link from "next/link";
 import CervosMap from "@/components/MapClientWrapper";
 
 export default async function NetworkPage() {
-  const supabase = await createServiceClient();
+  const authClient = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
   if (!user) redirect("/auth?next=/dashboard/network");
+
+  const supabase = await createServiceClient();
 
   const { data: account } = await supabase
     .from("accounts")

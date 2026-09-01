@@ -7,7 +7,7 @@
  * flow through Payme Africa; the webhook activates a 30-day subscription.
  */
 import { redirect } from "next/navigation";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlans, isSubscribedActive } from "@/lib/subscription";
 import SupplierSidebar from "@/components/SupplierSidebar";
 import Link from "next/link";
@@ -16,11 +16,13 @@ import PlanPayButton from "@/components/PlanPayButton";
 const UNLIMITED = 999999;
 
 export default async function SupplierSubscriptionPage() {
-  const supabase = await createServiceClient();
+  const authClient = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
   if (!user) redirect("/auth?next=/supplier/subscription");
+
+  const supabase = await createServiceClient();
 
   const { data: account } = await supabase
     .from("accounts")

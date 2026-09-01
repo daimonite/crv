@@ -34,11 +34,16 @@ interface QuoteItem {
   qty: number;
 }
 
+interface MarketplaceBranch {
+  id: string;
+  name: string;
+}
+
 interface MarketplaceBrowserProps {
   /** Full list of available products from all suppliers. */
   products: SupplierProduct[];
-  /** The pharmacy branch ID placing the order */
-  buyerBranchId: string;
+  /** All of this pharmacy's branches — the user picks which one is ordering. */
+  branches: MarketplaceBranch[];
 }
 
 const CATEGORIES: [string, string][] = [
@@ -51,7 +56,7 @@ const CATEGORIES: [string, string][] = [
   ["Diagnostics", "mkt.cat.diagnostics"],
 ];
 
-export default function MarketplaceBrowser({ products, buyerBranchId }: MarketplaceBrowserProps) {
+export default function MarketplaceBrowser({ products, branches }: MarketplaceBrowserProps) {
   const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -64,6 +69,7 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [walletMsisdn, setWalletMsisdn] = useState("");
   const [paymentInfo, setPaymentInfo] = useState<string | null>(null);
+  const [buyerBranchId, setBuyerBranchId] = useState(branches[0]?.id ?? "");
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -318,6 +324,22 @@ export default function MarketplaceBrowser({ products, buyerBranchId }: Marketpl
                       <span>{t("mkt.quote.total")}</span>
                       <span>TZS {totalValue.toLocaleString()}</span>
                     </div>
+                    {branches.length > 1 && (
+                      <div>
+                        <label className="font-mono text-[10px] text-on-surface-variant uppercase">
+                          {t("mkt.checkout.branch_label")}
+                        </label>
+                        <select
+                          value={buyerBranchId}
+                          onChange={(e) => setBuyerBranchId(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 border border-outline-variant bg-surface text-sm focus:outline-none focus:border-primary-container"
+                        >
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="font-mono text-[10px] text-on-surface-variant uppercase">{t("mkt.checkout.wallet_label")}</label>
                       <input
