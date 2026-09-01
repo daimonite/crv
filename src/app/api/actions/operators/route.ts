@@ -33,8 +33,16 @@ export async function POST(req: NextRequest) {
   const { action } = body;
 
   if (action === "create") {
-    const { name, pin, role, branch_id } = body;
-    const result = await createOperator(account.id, { name, pin, role, branch_id });
+    const { name, pin, role, branch_id, email, password, web_enabled } = body;
+    const result = await createOperator(account.id, {
+      name,
+      pin,
+      role,
+      branch_id,
+      email,
+      password,
+      web_enabled,
+    });
     return NextResponse.json(result);
   }
 

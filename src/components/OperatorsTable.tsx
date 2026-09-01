@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import type { Operator } from "@/lib/actions/operators";
@@ -39,6 +39,7 @@ const EMPTY_FORM: OperatorForm = {
 export default function OperatorsTable({ operators, branches }: OperatorsTableProps) {
   const { t } = useI18n();
   const router = useRouter();
+  const [operatorList, setOperatorList] = useState<Operator[]>(operators);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [modal, setModal] = useState<ModalState>({ mode: null, operator: null });
@@ -46,7 +47,13 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const filtered = operators.filter((op) => {
+  // Re-sync whenever the server gives us fresh props (e.g. after router.refresh()
+  // resolves), so this local copy never permanently drifts from the DB.
+  useEffect(() => {
+    setOperatorList(operators);
+  }, [operators]);
+
+  const filtered = operatorList.filter((op) => {
     const matchSearch =
       op.name.toLowerCase().includes(search.toLowerCase()) ||
       (op.branch_name ?? "").toLowerCase().includes(search.toLowerCase());
@@ -111,6 +118,9 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
         setLoading(false);
         return;
       }
+      if (data.operator) {
+        setOperatorList((prev) => [...prev, data.operator]);
+      }
     } else if (modal.mode === "edit" && modal.operator) {
       const updates: Record<string, unknown> = {
         name: form.name,
@@ -132,6 +142,9 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
         setError(data.error);
         setLoading(false);
         return;
+      }
+      if (data.operator) {
+        setOperatorList((prev) => prev.map((op) => (op.id === data.operator.id ? data.operator : op)));
       }
     } else if (modal.mode === "reset" && modal.operator) {
       if (!form.pin || !/^\d{4,8}$/.test(form.pin)) {
@@ -169,6 +182,7 @@ export default function OperatorsTable({ operators, branches }: OperatorsTablePr
       setError(data.error);
       return;
     }
+    setOperatorList((prev) => prev.filter((op) => op.id !== id));
     router.refresh();
   }, [router]);
 

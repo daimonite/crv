@@ -166,7 +166,7 @@ export async function getOperators(accountId: string): Promise<Operator[]> {
 export async function createOperator(
   accountId: string,
   input: CreateOperatorInput
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; operator?: Operator }> {
   const supabase = await createClient();
 
   const { data: branch } = await supabase
@@ -214,20 +214,41 @@ export async function createOperator(
     if (authUserId) insert.auth_user_id = authUserId;
   }
 
-  const { error } = await supabase.from("operators").insert(insert);
+  const { data: created, error } = await supabase
+    .from("operators")
+    .insert(insert)
+    .select("id, name, pin_hash, role, branch_id, created_at, auth_user_id, email, web_enabled, branches(name)")
+    .single();
 
   if (error) {
     await deleteAuthUser(authUserId);
     return { error: error.message };
   }
-  return { error: null };
+
+  const row = created as unknown as (Operator & { branches: { name: string }[] | null }) | null;
+  const operator: Operator | undefined = row
+    ? {
+        id: row.id,
+        name: row.name,
+        pin_hash: row.pin_hash,
+        role: row.role,
+        branch_id: row.branch_id,
+        auth_user_id: row.auth_user_id ?? null,
+        email: row.email ?? null,
+        web_enabled: row.web_enabled ?? false,
+        created_at: row.created_at,
+        branch_name: row.branches?.[0]?.name ?? "Unknown",
+      }
+    : undefined;
+
+  return { error: null, operator };
 }
 
 export async function updateOperator(
   id: string,
   accountId: string,
   input: UpdateOperatorInput
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; operator?: Operator }> {
   const supabase = await createClient();
 
   const { data: op } = await supabase
@@ -298,13 +319,32 @@ export async function updateOperator(
 
   if (Object.keys(updates).length === 0) return { error: null };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("operators")
     .update(updates)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id, name, pin_hash, role, branch_id, created_at, auth_user_id, email, web_enabled, branches(name)")
+    .single();
 
   if (error) return { error: error.message };
-  return { error: null };
+
+  const row = updated as unknown as (Operator & { branches: { name: string }[] | null }) | null;
+  const operator: Operator | undefined = row
+    ? {
+        id: row.id,
+        name: row.name,
+        pin_hash: row.pin_hash,
+        role: row.role,
+        branch_id: row.branch_id,
+        auth_user_id: row.auth_user_id ?? null,
+        email: row.email ?? null,
+        web_enabled: row.web_enabled ?? false,
+        created_at: row.created_at,
+        branch_name: row.branches?.[0]?.name ?? "Unknown",
+      }
+    : undefined;
+
+  return { error: null, operator };
 }
 
 export async function deleteOperator(
