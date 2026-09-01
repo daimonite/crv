@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
   // Enforce the plan's connected-pharmacy cap.
   const { data: plans } = await getPlans(service, "supplier");
-  const plan = plans?.find((p) => p.name === acct?.subscription_plan) ?? plans?.[0];
+  const plan = plans?.find((p) => p.id === acct?.subscription_plan) ?? plans?.[0];
   const cap = plan?.max_connected_pharmacies ?? 0;
   if (cap > 0) {
     const { count } = await service
@@ -208,7 +208,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { data: plans } = await getPlans(service, "pharmacy");
-    const plan = plans?.find((p) => p.name === acct?.subscription_plan) ?? plans?.[0];
+    const plan = plans?.find((p) => p.id === acct?.subscription_plan) ?? plans?.[0];
     const cap = plan?.max_suppliers ?? 0;
     const { data: branches } = await service
       .from("branches")

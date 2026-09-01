@@ -37,7 +37,7 @@ export default async function SupplierSubscriptionPage() {
     .eq("supplier_id", account.id)
     .eq("status", "approved");
 
-  const currentPlan = plans?.find((p) => p.name === account.subscription_plan) ?? plans?.[0] ?? null;
+  const currentPlan = plans?.find((p) => p.id === account.subscription_plan) ?? plans?.[0] ?? null;
   const subscribed = isSubscribedActive(account) || (account.trial_ends_at && new Date(account.trial_ends_at) > new Date());
 
   const statusConfig = subscribed
@@ -140,7 +140,7 @@ export default async function SupplierSubscriptionPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {(plans ?? []).map((plan) => {
-                const isCurrent = plan.name === account.subscription_plan;
+                const isCurrent = plan.id === account.subscription_plan;
                 const unlimited = plan.max_connected_pharmacies >= UNLIMITED;
                 return (
                   <div

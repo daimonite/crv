@@ -93,10 +93,10 @@ async function ensureOperatorCap(
 
   const { data: plans } = await service
     .from("subscription_plans")
-    .select("name, max_operators, audience")
+    .select("id, name, max_operators, audience")
     .eq("audience", "pharmacy");
 
-  const plan = (plans ?? []).find((p) => p.name === account?.subscription_plan) ?? null;
+  const plan = (plans ?? []).find((p) => p.id === account?.subscription_plan) ?? null;
   const cap = plan?.max_operators ?? 0;
   if (cap <= 0) return null;
 

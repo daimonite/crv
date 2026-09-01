@@ -30,13 +30,13 @@ export async function GET(request: NextRequest) {
     isSubscribedActive(account) ||
     (account.trial_ends_at && new Date(account.trial_ends_at).getTime() > now);
 
-  // Resolve the stored plan name → plan row; PAYG (no plan) → cheapest of the audience.
+  // Resolve the stored plan id → plan row; PAYG (no plan) → cheapest of the audience.
   const { data: plans, error: plansError } = await getPlans(service, audience);
   if (plansError) return NextResponse.json({ error: plansError }, { status: 500 });
 
   let plan: SubscriptionPlan | null = null;
   if (plans) {
-    plan = plans.find((p) => p.name === account.subscription_plan) ?? null;
+    plan = plans.find((p) => p.id === account.subscription_plan) ?? null;
     if (!plan) plan = plans[0] ?? null;
   }
 

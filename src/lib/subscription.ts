@@ -246,7 +246,7 @@ export async function activateSubscription(args: {
     .from("accounts")
     .update({
       subscription_status: "active",
-      subscription_plan: plan?.name ?? null,
+      subscription_plan: plan?.id ?? null,
       subscription_started_at: account?.subscription_started_at ?? new Date().toISOString(),
       subscription_expires_at: newExpires.toISOString(),
       grace_ends_at: null,

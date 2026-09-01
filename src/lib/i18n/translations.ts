@@ -103,11 +103,13 @@ export const strings: Record<string, Record<Lang, string>> = {
   "portal.logout":      { EN: "Logout",      SW: "Toka" },
   "portal.language":    { EN: "Language",    SW: "Lugha" },
   "portal.branch":      { EN: "Active Branch",SW: "Tawi Amilifu" },
+  "portal.alerts":     { EN: "Alerts",       SW: "Tahadhari" },
   "portal.operators":  { EN: "Operators",    SW: "Waendeshaji" },
   "portal.orders":    { EN: "Orders",       SW: "Maagizo" },
   "portal.branches":  { EN: "Branches",     SW: "Matawi" },
   "portal.network":   { EN: "Network",      SW: "Mtandao" },
   "portal.reports":  { EN: "Reports",      SW: "Ripoti" },
+  "portal.billing":  { EN: "Billing",      SW: "Malipo" },
 
   // ── Supplier portal ───────────────────────────────────────────────────────
   "sup.catalog":      { EN: "Catalog",            SW: "Katalogi" },
@@ -120,6 +122,10 @@ export const strings: Record<string, Record<Lang, string>> = {
   "sup.activity":    { EN: "Activity Log",      SW: "Kumbukumbu" },
   "sup.quote":       { EN: "Request Quote",      SW: "Omba Nukuu" },
   "sup.support":      { EN: "Support",             SW: "Msaada" },
+
+  // ── Billing (pharmacy portal) ─────────────────────────────────────────────
+  "billing.title":    { EN: "Billing & Subscription", SW: "Malipo na Usajili" },
+  "billing.subtitle": { EN: "Manage your plan, connected suppliers, and mobile-money payments.", SW: "Simamia mpango wako, wasambazaji uliounganishwa, na malipo ya pesa za simu." },
 
   // ── Dashboard (pharmacy portal) ───────────────────────────────────────────
   "dash.greeting":         { EN: "Good morning,",  SW: "Habari za asubuhi," },

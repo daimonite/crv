@@ -56,7 +56,7 @@ export default async function BillingPage() {
     features: Array.isArray(p.features) ? p.features.map((f) => String(f)) : [],
   }));
 
-  const currentPlan = plans.find((p) => p.name === account.subscription_plan) ?? null;
+  const currentPlan = plans.find((p) => p.id === account.subscription_plan) ?? null;
   const subscribed = isSubscribedActive(account);
 
   const { data: settings } = await supabase
