@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         .from("orders")
         .update({ status: "confirmed" })
         .eq("id", payment.order_id)
-        .eq("status", "pending");
+        .eq("status", "approved");
 
       if (orderError) {
         console.error(`[Payme Webhook] Failed to update order: ${orderError.message}`);

@@ -1,0 +1,28 @@
+diff a/src/app/dashboard/network/page.tsx b/src/app/dashboard/network/page.tsx	(rejected hunks)
+@@ -5,19 +5,23 @@
+  * full-width Leaflet map, plus a connected-suppliers panel with plan usage.
+  */
+ import { redirect } from "next/navigation";
+-import { createServiceClient } from "@/lib/supabase/server";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ import { isSubscribedActive } from "@/lib/subscription";
+ import PharmacySidebar from "@/components/PharmacySidebar";
+ import Link from "next/link";
+ import CervosMap from "@/components/MapClientWrapper";
+ 
+ export default async function NetworkPage() {
+-  const supabase = await createServiceClient();
++  // Identity comes from the cookie-bound client; `createServiceClient()` has
++  // no session of its own and is used below only for privileged reads.
++  const authClient = await createClient();
+   const {
+     data: { user },
+-  } = await supabase.auth.getUser();
++  } = await authClient.auth.getUser();
+   if (!user) redirect("/auth?next=/dashboard/network");
+ 
++  const supabase = await createServiceClient();
++
+   const { data: account } = await supabase
+     .from("accounts")
+     .select("id, name, type, subscription_status, subscription_expires_at, trial_ends_at")

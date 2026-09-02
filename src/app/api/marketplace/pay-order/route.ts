@@ -40,8 +40,14 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
-  if (order.status !== "pending") {
-    return NextResponse.json({ error: "This order can only be paid while pending." }, { status: 409 });
+  if (order.status === "pending") {
+    return NextResponse.json(
+      { error: "This order is still awaiting supplier approval. You can pay once the supplier approves it.", code: "AWAITING_APPROVAL" },
+      { status: 409 }
+    );
+  }
+  if (order.status !== "approved") {
+    return NextResponse.json({ error: "This order can only be paid while it's approved and unpaid." }, { status: 409 });
   }
 
   // Authorization: the buyer branch must belong to the calling account.

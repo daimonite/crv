@@ -1,0 +1,54 @@
+diff a/src/lib/supabase/server.ts b/src/lib/supabase/server.ts	(rejected hunks)
+@@ -30,7 +30,7 @@
+  */
+ 
+ import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
+-import type { SupabaseClient } from "@supabase/supabase-js";
++import { createClient as createSupabaseJsClient, type SupabaseClient } from "@supabase/supabase-js";
+ import { cookies } from "next/headers";
+ 
+ import { createMockSupabase, mockUserForType } from "@/lib/mock/supabase";
+@@ -129,18 +129,36 @@
+  * validated the HQ session cookie via `assertHQAuth()`. Never expose this client
+  * to user-facing code or return its raw output to the browser.
+  *
+- * Note: Cookies are still passed for consistency with `@supabase/ssr` requirements,
+- * but the service-role key is what grants elevated access — not the user session.
++ * IMPORTANT: this client is intentionally built WITHOUT `@supabase/ssr` cookie
++ * wiring. `@supabase/ssr`'s `createServerClient()` restores the caller's own
++ * session from cookies and then overwrites the PostgREST `Authorization`
++ * header with that session's access token — silently downgrading every
++ * `.from()` query back to the signed-in user's own role, no matter which key
++ * you passed in. Since most callers here run inside an authenticated
++ * pharmacy/supplier request, that downgrade was invisible for tables whose
++ * RLS policies happen to also allow the owning user, but it hard-fails (RLS
++ * violation) for tables restricted to `service_role` only, e.g.
++ * `subscription_payments` / `branch_supplier_connections`. Using the plain
++ * `@supabase/supabase-js` client here, with no session/cookie store, keeps
++ * every request — REST and Auth alike — on the service-role key.
++ *
++ * This client has NO notion of "who is signed in" (calling `.auth.getUser()`
++ * on it will always return null). Callers that need both the caller's
++ * identity AND elevated table access should resolve identity separately via
++ * `createClient()` (or `getUserFromRequest()` in Route Handlers) and use this
++ * client only for the privileged `.from()` calls.
+  *
+- * @returns Service-role server client (bypasses RLS)
++ * @returns Service-role client (bypasses RLS, no user session)
+  */
+ export async function createServiceClient(): Promise<SupabaseServerClient> {
+-  const cookieStore = await cookies();
+-  if (IS_MOCK) return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
+-  return createServerClient(
++  if (IS_MOCK) {
++    const cookieStore = await cookies();
++    return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
++  }
++  return createSupabaseJsClient(
+     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+-    { cookies: cookieMethods(cookieStore) }
++    { auth: { autoRefreshToken: false, persistSession: false } }
+   );
+ }
+ 

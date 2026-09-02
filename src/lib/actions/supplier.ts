@@ -38,7 +38,7 @@ export interface CatalogProduct {
   status: "active" | "archived" | "draft";
 }
 
-export type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+export type OrderStatus = "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
 
 /** Inbound order shape expected by SupplierOrdersTable. */
 export interface SupplierOrder {
@@ -311,7 +311,11 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
 }
 
 const ORDER_FLOW: Record<OrderStatus, OrderStatus[]> = {
-  pending: ["confirmed", "cancelled"],
+  pending: ["approved", "cancelled"],
+  // "confirmed" is reached only via a completed payment (Payme webhook →
+  // settleOrderPayout), never by direct supplier action — approving an
+  // order just unlocks payment, it doesn't collect it.
+  approved: ["cancelled"],
   confirmed: ["shipped", "cancelled"],
   shipped: ["delivered"],
   delivered: [],
@@ -321,6 +325,13 @@ const ORDER_FLOW: Record<OrderStatus, OrderStatus[]> = {
 /**
  * Advances (or cancels) an order through the fulfilment pipeline. Valid
  * transitions are enforced server-side and each state stamps its timestamp.
+ *
+ * Approving a `pending` order (→ "approved") is the supplier's commitment to
+ * fulfil it: it decrements `supplier_catalog.stock_qty` for each line item
+ * with a matched product, and notifies the pharmacy that they can now pay.
+ * It intentionally does NOT charge the pharmacy — that only happens once
+ * they call /api/marketplace/pay-order, and the order only reaches
+ * "confirmed" after that payment completes.
  */
 export async function updateOrderStatus(
   id: string,
@@ -345,6 +356,7 @@ export async function updateOrderStatus(
   const update: Record<string, string> = {
     status,
     updated_at: stamp,
+    approved_at: status === "approved" ? stamp : undefined as unknown as string,
     confirmed_at: status === "confirmed" ? stamp : undefined as unknown as string,
     shipped_at: status === "shipped" ? stamp : undefined as unknown as string,
     delivered_at: status === "delivered" ? stamp : undefined as unknown as string,

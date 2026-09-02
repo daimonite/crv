@@ -1,0 +1,908 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/api/marketplace/checkout/route.ts /home/claude/crv/src/app/api/marketplace/checkout/route.ts
+--- a/src/app/api/marketplace/checkout/route.ts	2026-09-01 08:27:41.380037873 +0000
++++ b/src/app/api/marketplace/checkout/route.ts	2026-09-02 07:25:39.096243278 +0000
+@@ -55,11 +55,6 @@
+     );
+   }
+ 
+-  // Prefer the wallet saved in payment_settings, fall back to the accounts column.
+-  const walletFromSettings = (
+-    await service.from("payment_settings").select("payme_wallet_number").eq("account_id", account.id).maybeSingle()
+-  ).data as { payme_wallet_number?: string | null } | null;
+-
+   const { data: branch } = await service
+     .from("branches")
+     .select("id, account_id")
+@@ -116,10 +111,10 @@
+ 
+   const priceMap = new Map(catalogRows.map((r) => [r.id, r] as const));
+   let total = 0;
+-  const lineItems: { catalogId: string; quantity: number; unitPrice: number; productName: string }[] = [];
++  const lineItems: { catalogId: string; quantity: number; unitPrice: number; productName: string; productId: string | null }[] = [];
+ 
+   for (const item of items) {
+-    const row = priceMap.get(item.catalogId) as unknown as { price: number; min_order_qty: number; products: { generic_name: string; brand_name: string | null }[] | null } | undefined;
++    const row = priceMap.get(item.catalogId) as unknown as { price: number; min_order_qty: number; products: { id: string; generic_name: string; brand_name: string | null }[] | null } | undefined;
+     if (!row) return NextResponse.json({ error: `Catalog item ${item.catalogId} not found` }, { status: 400 });
+     if (item.quantity < row.min_order_qty) {
+       return NextResponse.json({ error: `Quantity for ${item.catalogId} below minimum ${row.min_order_qty}` }, { status: 400 });
+@@ -127,7 +122,7 @@
+     const unitPrice = Number(row.price);
+     total += unitPrice * item.quantity;
+     const productName = row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Product";
+-    lineItems.push({ catalogId: item.catalogId, quantity: item.quantity, unitPrice, productName });
++    lineItems.push({ catalogId: item.catalogId, quantity: item.quantity, unitPrice, productName, productId: row.products?.[0]?.id ?? null });
+   }
+ 
+   const orderId = crypto.randomUUID();
+@@ -152,6 +147,7 @@
+   const dbLineItems = lineItems.map((item) => ({
+     id: crypto.randomUUID(),
+     order_id: orderId,
++    product_id: item.productId,
+     product_name: item.productName,
+     quantity: item.quantity,
+     unit_price: item.unitPrice,
+@@ -163,83 +159,25 @@
+     return NextResponse.json({ error: lineError.message }, { status: 500 });
+   }
+ 
+-  // If no payment info or zero total, return order without charging
+-  const walletMsisdn = (
+-    msisdn?.trim() ||
+-    walletFromSettings?.payme_wallet_number ||
+-    (account as unknown as { payme_wallet_number?: string }).payme_wallet_number ||
+-    ""
+-  ).trim();
+-  if (!walletMsisdn || total <= 0) {
+-    return NextResponse.json({
+-      orderId,
+-      orderRef,
+-      total,
+-      payment: null,
+-      message: walletMsisdn ? undefined : "Order created. Add a Payme wallet number in settings to enable escrow payment.",
+-    });
+-  }
+-
+-  // Create payment record and trigger Payme collection
+-  const amountTzs = Math.round(total);
+-  const reference = `PAY-${orderRef}-${orderId.slice(0, 8)}`;
+-  const idempotencyKey = body.idempotencyKey || `${orderId}-${Date.now()}`;
+-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+-
+-  const { error: payInsertError } = await service.from("payments").insert({
+-    account_id: account.id,
+-    order_id: orderId,
+-    reference,
+-    idempotency_key: idempotencyKey,
+-    amount_tzs: amountTzs,
+-    msisdn: walletMsisdn,
+-    status: "pending",
+-  });
+-
+-  if (payInsertError) {
+-    // Order already created; don't fail checkout, just report payment issue
+-    console.error("[marketplace/checkout] payment insert error:", payInsertError);
+-    return NextResponse.json({
+-      orderId,
+-      orderRef,
+-      total,
+-      payment: { status: "failed", error: payInsertError.message },
+-    });
+-  }
+-
+-  const { initiateCollection } = await import("@/lib/payme");
+-  const { data: paymeData, error: paymeError } = await initiateCollection({
+-    amount: amountTzs,
+-    msisdn: walletMsisdn,
+-    reference,
+-    callback_url: `${appUrl}/api/webhooks/payme`,
+-  });
+-
+-  if (paymeError) {
+-    await service.from("payments").update({ status: "failed", failure_reason: paymeError }).eq("reference", reference);
+-    return NextResponse.json({
+-      orderId,
+-      orderRef,
+-      total,
+-      payment: { status: "failed", reference, error: paymeError },
+-    });
++  // Orders are no longer charged at checkout — the pharmacy pays only after
++  // the supplier reviews stock/delivery capacity and approves the order
++  // (see PATCH /api/marketplace/orders/[id]/approve and POST /api/marketplace/pay-order).
++  // If a wallet number was given up front, save it now so it's pre-filled when paying later.
++  const trimmedMsisdn = msisdn?.trim();
++  if (trimmedMsisdn) {
++    const { error: walletSaveError } = await service
++      .from("payment_settings")
++      .upsert({ account_id: account.id, payme_wallet_number: trimmedMsisdn }, { onConflict: "account_id" });
++    if (walletSaveError) {
++      console.error("[marketplace/checkout] wallet save error:", walletSaveError.message);
++    }
+   }
+ 
+-  await service.from("payments").update({
+-    provider_transaction_id: paymeData?.transaction_id || null,
+-    status: paymeData?.payment_status === "COMPLETED" ? "completed" : "pending",
+-    completed_at: paymeData?.payment_status === "COMPLETED" ? new Date().toISOString() : null,
+-  }).eq("reference", reference);
+-
+   return NextResponse.json({
+     orderId,
+     orderRef,
+     total,
+-    payment: {
+-      status: paymeData?.payment_status === "COMPLETED" ? "completed" : "pending",
+-      reference,
+-      transaction_id: paymeData?.transaction_id ?? null,
+-      message: paymeData?.payment_status === "COMPLETED" ? "Payment completed" : "Payment initiated — you'll receive a mobile money prompt to confirm.",
+-    },
++    payment: null,
++    message: "Order sent to the supplier for approval. You'll be able to pay once they approve it.",
+   });
+ }
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/api/marketplace/pay-order/route.ts /home/claude/crv/src/app/api/marketplace/pay-order/route.ts
+--- a/src/app/api/marketplace/pay-order/route.ts	2026-09-01 08:27:41.380037873 +0000
++++ b/src/app/api/marketplace/pay-order/route.ts	2026-09-02 07:26:32.919132311 +0000
+@@ -40,8 +40,14 @@
+     .single();
+ 
+   if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
+-  if (order.status !== "pending") {
+-    return NextResponse.json({ error: "This order can only be paid while pending." }, { status: 409 });
++  if (order.status === "pending") {
++    return NextResponse.json(
++      { error: "This order is still awaiting supplier approval. You can pay once the supplier approves it.", code: "AWAITING_APPROVAL" },
++      { status: 409 }
++    );
++  }
++  if (order.status !== "approved") {
++    return NextResponse.json({ error: "This order can only be paid while it's approved and unpaid." }, { status: 409 });
+   }
+ 
+   // Authorization: the buyer branch must belong to the calling account.
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/api/webhooks/payme/route.ts /home/claude/crv/src/app/api/webhooks/payme/route.ts
+--- a/src/app/api/webhooks/payme/route.ts	2026-09-01 08:27:41.380905761 +0000
++++ b/src/app/api/webhooks/payme/route.ts	2026-09-02 07:26:36.488990855 +0000
+@@ -75,7 +75,7 @@
+         .from("orders")
+         .update({ status: "confirmed" })
+         .eq("id", payment.order_id)
+-        .eq("status", "pending");
++        .eq("status", "approved");
+ 
+       if (orderError) {
+         console.error(`[Payme Webhook] Failed to update order: ${orderError.message}`);
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/dashboard/billing/page.tsx /home/claude/crv/src/app/dashboard/billing/page.tsx
+--- a/src/app/dashboard/billing/page.tsx	2026-09-01 08:27:41.495800216 +0000
++++ b/src/app/dashboard/billing/page.tsx	2026-09-01 08:26:16.546043340 +0000
+@@ -6,7 +6,7 @@
+  * a 30-day subscription, and plan switching.
+  */
+ import { redirect } from "next/navigation";
+-import { createServiceClient } from "@/lib/supabase/server";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ import { getPlans, isSubscribedActive } from "@/lib/subscription";
+ import { selectPlan } from "@/lib/actions/pharmacy";
+ import PharmacySidebar from "@/components/PharmacySidebar";
+@@ -17,12 +17,16 @@
+ export default async function BillingPage() {
+   const t = await getT();
+ 
+-  const supabase = await createServiceClient();
++  // Identity comes from the cookie-bound client; `createServiceClient()` has
++  // no session of its own and is used below only for privileged reads.
++  const authClient = await createClient();
+   const {
+     data: { user },
+-  } = await supabase.auth.getUser();
++  } = await authClient.auth.getUser();
+   if (!user) redirect("/auth?next=/dashboard/billing");
+ 
++  const supabase = await createServiceClient();
++
+   const { data: account } = await supabase
+     .from("accounts")
+     .select("id, name, subscription_plan, subscription_status, billing_status, subscription_expires_at")
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/dashboard/network/page.tsx /home/claude/crv/src/app/dashboard/network/page.tsx
+--- a/src/app/dashboard/network/page.tsx	2026-09-01 08:27:41.382261775 +0000
++++ b/src/app/dashboard/network/page.tsx	2026-09-01 08:26:22.674893707 +0000
+@@ -5,19 +5,23 @@
+  * full-width Leaflet map, plus a connected-suppliers panel with plan usage.
+  */
+ import { redirect } from "next/navigation";
+-import { createServiceClient } from "@/lib/supabase/server";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ import { isSubscribedActive } from "@/lib/subscription";
+ import PharmacySidebar from "@/components/PharmacySidebar";
+ import Link from "next/link";
+ import CervosMap from "@/components/MapClientWrapper";
+ 
+ export default async function NetworkPage() {
+-  const supabase = await createServiceClient();
++  // Identity comes from the cookie-bound client; `createServiceClient()` has
++  // no session of its own and is used below only for privileged reads.
++  const authClient = await createClient();
+   const {
+     data: { user },
+-  } = await supabase.auth.getUser();
++  } = await authClient.auth.getUser();
+   if (!user) redirect("/auth?next=/dashboard/network");
+ 
++  const supabase = await createServiceClient();
++
+   const { data: account } = await supabase
+     .from("accounts")
+     .select("id, name, type, subscription_status, subscription_expires_at, trial_ends_at")
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/app/supplier/subscription/page.tsx /home/claude/crv/src/app/supplier/subscription/page.tsx
+--- a/src/app/supplier/subscription/page.tsx	2026-09-01 08:27:41.495800216 +0000
++++ b/src/app/supplier/subscription/page.tsx	2026-09-01 08:26:32.562599523 +0000
+@@ -7,7 +7,7 @@
+  * flow through Payme Africa; the webhook activates a 30-day subscription.
+  */
+ import { redirect } from "next/navigation";
+-import { createServiceClient } from "@/lib/supabase/server";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ import { getPlans, isSubscribedActive } from "@/lib/subscription";
+ import SupplierSidebar from "@/components/SupplierSidebar";
+ import Link from "next/link";
+@@ -16,12 +16,16 @@
+ const UNLIMITED = 999999;
+ 
+ export default async function SupplierSubscriptionPage() {
+-  const supabase = await createServiceClient();
++  // Identity comes from the cookie-bound client; `createServiceClient()` has
++  // no session of its own and is used below only for privileged reads.
++  const authClient = await createClient();
+   const {
+     data: { user },
+-  } = await supabase.auth.getUser();
++  } = await authClient.auth.getUser();
+   if (!user) redirect("/auth?next=/supplier/subscription");
+ 
++  const supabase = await createServiceClient();
++
+   const { data: account } = await supabase
+     .from("accounts")
+     .select("id, name, type, subscription_status, subscription_expires_at, subscription_plan, download_enabled, verified, trial_ends_at")
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/components/MarketplaceBrowser.tsx /home/claude/crv/src/components/MarketplaceBrowser.tsx
+--- a/src/components/MarketplaceBrowser.tsx	2026-09-01 08:27:41.387189362 +0000
++++ b/src/components/MarketplaceBrowser.tsx	2026-09-02 07:34:36.337285811 +0000
+@@ -359,7 +359,7 @@
+                                 msisdn: walletMsisdn.trim() || undefined,
+                               }),
+                             });
+-                            const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; payment?: { status: string; error?: string; message?: string } };
++                            const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; message?: string; payment?: { status: string; error?: string; message?: string } };
+                             if (!res.ok) {
+                               setSubmitError(json.error || `Checkout failed (${res.status})`);
+                               hasError = true;
+@@ -370,6 +370,8 @@
+                               if (json.payment.status === "completed") lastPaymentMsg = "Payment completed.";
+                               else if (json.payment.status === "pending") lastPaymentMsg = json.payment.message || "Payment initiated — check your phone for the mobile money prompt.";
+                               else if (json.payment.error) lastPaymentMsg = `Payment failed: ${json.payment.error}`;
++                            } else if (json.message) {
++                              lastPaymentMsg = json.message;
+                             }
+                           } catch (e) {
+                             setSubmitError(e instanceof Error ? e.message : "Checkout failed");
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/components/OrdersTable.tsx /home/claude/crv/src/components/OrdersTable.tsx
+--- a/src/components/OrdersTable.tsx	2026-09-01 08:27:41.387189362 +0000
++++ b/src/components/OrdersTable.tsx	2026-09-02 07:33:36.703103781 +0000
+@@ -9,10 +9,11 @@
+   orders: Order[];
+ }
+ 
+-type StatusFilter = "all" | "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
++type StatusFilter = "all" | "pending" | "approved" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+ 
+ const STATUS_COLORS: Record<string, string> = {
+   pending: "bg-amber-50 text-amber-700",
++  approved: "bg-purple-50 text-purple-700",
+   confirmed: "bg-blue-50 text-blue-700",
+   processing: "bg-purple-50 text-purple-700",
+   shipped: "bg-cyan-50 text-cyan-700",
+@@ -26,6 +27,18 @@
+   product_name: string;
+   quantity: number;
+   unit_price: number;
++  stock_available: number | null;
++}
++
++interface OrderHistoryEntry {
++  key: string;
++  label: string;
++  at: string | null;
++}
++
++interface OrderReceipt {
++  payment: { reference: string; status: string; transactionId: string | null; amountTzs: number; completedAt: string | null } | null;
++  disbursement: { reference: string; status: string; completedAt: string | null } | null;
+ }
+ 
+ export default function OrdersTable({ orders }: OrdersTableProps) {
+@@ -35,7 +48,7 @@
+   const [dateFrom, setDateFrom] = useState("");
+   const [dateTo, setDateTo] = useState("");
+   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+-  const [orderDetail, setOrderDetail] = useState<{ order_items: OrderLineItem[] } | null>(null);
++  const [orderDetail, setOrderDetail] = useState<{ order_items: OrderLineItem[]; history?: OrderHistoryEntry[]; receipt?: OrderReceipt } | null>(null);
+   const [loadingDetail, setLoadingDetail] = useState(false);
+   const [payWallet, setPayWallet] = useState("");
+   const [payBusy, setPayBusy] = useState(false);
+@@ -133,6 +146,7 @@
+           >
+             <option value="all">{t("dash.orders.allStatuses")}</option>
+             <option value="pending">{t("dash.orders.status.pending")}</option>
++            <option value="approved">Approved</option>
+             <option value="confirmed">{t("dash.orders.status.confirmed")}</option>
+             <option value="processing">{t("dash.orders.status.processing")}</option>
+             <option value="shipped">{t("dash.orders.status.shipped")}</option>
+@@ -279,7 +293,12 @@
+                         <div key={item.id || i} className="py-3 flex items-center justify-between">
+                           <div>
+                             <p className="text-sm text-ink-deep">{item.product_name ?? "—"}</p>
+-                            <p className="text-xs text-on-surface-variant">{item.quantity} × TSh {item.unit_price.toLocaleString()}</p>
++                            <p className="text-xs text-on-surface-variant">
++                              {item.quantity} × TSh {item.unit_price.toLocaleString()}
++                              {typeof item.stock_available === "number" && (
++                                <span className="ml-2 text-on-surface-variant/70">· {item.stock_available.toLocaleString()} in stock at supplier</span>
++                              )}
++                            </p>
+                           </div>
+                           <p className="text-sm font-medium text-ink-deep">
+                             TSh {(item.quantity * item.unit_price).toLocaleString()}
+@@ -299,8 +318,32 @@
+                   </p>
+                 </div>
+ 
++                {Array.isArray(orderDetail.history) && orderDetail.history.length > 0 && (
++                  <div className="border-t border-outline-variant pt-4">
++                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">Order history</p>
++                    <div className="flex flex-col gap-1.5">
++                      {orderDetail.history.map((h) => (
++                        <div key={h.key} className="flex items-center justify-between text-xs">
++                          <span className={h.at ? "text-ink-deep" : "text-on-surface-variant/50"}>{h.label}</span>
++                          <span className={h.at ? "text-on-surface-variant" : "text-on-surface-variant/50"}>
++                            {h.at ? new Date(h.at).toLocaleString() : "—"}
++                          </span>
++                        </div>
++                      ))}
++                    </div>
++                  </div>
++                )}
++
+                 {selectedOrder.status === "pending" && (
+                   <div className="border-t border-outline-variant pt-4">
++                    <p className="text-sm text-on-surface-variant">
++                      Waiting for the supplier to review and approve this order. You'll be able to pay once it's approved.
++                    </p>
++                  </div>
++                )}
++
++                {selectedOrder.status === "approved" && (
++                  <div className="border-t border-outline-variant pt-4">
+                     <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">
+                       Pay order via mobile money
+                     </p>
+@@ -328,6 +371,44 @@
+                     {payMessage && <p className="mt-2 text-xs text-success">{payMessage}</p>}
+                   </div>
+                 )}
++
++                {orderDetail.receipt?.payment && (
++                  <div className="border-t border-outline-variant pt-4">
++                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">Receipt</p>
++                    <div className="flex flex-col gap-1.5 text-xs">
++                      <div className="flex items-center justify-between">
++                        <span className="text-on-surface-variant">Payment reference</span>
++                        <span className="text-ink-deep font-mono">{orderDetail.receipt.payment.reference}</span>
++                      </div>
++                      <div className="flex items-center justify-between">
++                        <span className="text-on-surface-variant">Status</span>
++                        <span className="text-ink-deep capitalize">{orderDetail.receipt.payment.status}</span>
++                      </div>
++                      {orderDetail.receipt.payment.transactionId && (
++                        <div className="flex items-center justify-between">
++                          <span className="text-on-surface-variant">Transaction ID</span>
++                          <span className="text-ink-deep font-mono">{orderDetail.receipt.payment.transactionId}</span>
++                        </div>
++                      )}
++                      <div className="flex items-center justify-between">
++                        <span className="text-on-surface-variant">Amount</span>
++                        <span className="text-ink-deep">TSh {orderDetail.receipt.payment.amountTzs.toLocaleString()}</span>
++                      </div>
++                      {orderDetail.receipt.payment.completedAt && (
++                        <div className="flex items-center justify-between">
++                          <span className="text-on-surface-variant">Paid at</span>
++                          <span className="text-ink-deep">{new Date(orderDetail.receipt.payment.completedAt).toLocaleString()}</span>
++                        </div>
++                      )}
++                      {orderDetail.receipt.disbursement && (
++                        <div className="flex items-center justify-between pt-1 border-t border-outline-variant/30 mt-1">
++                          <span className="text-on-surface-variant">Supplier payout</span>
++                          <span className="text-ink-deep capitalize">{orderDetail.receipt.disbursement.status}</span>
++                        </div>
++                      )}
++                    </div>
++                  </div>
++                )}
+               </div>
+             ) : null}
+           </div>
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/components/SupplierOrdersTable.tsx /home/claude/crv/src/components/SupplierOrdersTable.tsx
+--- a/src/components/SupplierOrdersTable.tsx	2026-09-01 08:27:41.387189362 +0000
++++ b/src/components/SupplierOrdersTable.tsx	2026-09-02 07:27:04.614974627 +0000
+@@ -3,8 +3,10 @@
+  * @description Inbound purchase orders table for supplier accounts.
+  *
+  * Displays orders from pharmacies with expandable line-item details.
+- * Status transitions (pending → confirmed → shipped → delivered) hit the
+- * live `orders` table via the `updateOrderStatus` server action.
++ * Status transitions (pending → approved → confirmed → shipped → delivered)
++ * hit the live `orders` table via the `updateOrderStatus` server action.
++ * "confirmed" is reached only once the pharmacy's payment completes — the
++ * supplier's own action stops at "approved".
+  *
+  * Order totals are always derived from line items at render time to
+  * guarantee consistency — never rely on a pre-stored `total_value` field.
+@@ -27,7 +29,7 @@
+   currency: string;
+   /** ISO date string of when the order was placed. */
+   placedAt: string;
+-  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
++  status: "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
+ }
+ 
+ /** Always derive the order total from its line items to guarantee consistency. */
+@@ -44,6 +46,7 @@
+ function StatusBadge({ status }: { status: SupplierOrder["status"] }) {
+   const styles: Record<SupplierOrder["status"], string> = {
+     pending: "border-[#b45309] text-[#b45309] bg-[#fef3c7]",
++    approved: "border-[#7c3aed] text-[#7c3aed] bg-[#f3e8ff]",
+     confirmed: "border-primary-container text-primary-container bg-surface-container",
+     shipped: "border-[#0891b2] text-[#0891b2] bg-[#ecfeff]",
+     delivered: "border-tertiary-container text-tertiary bg-[#dcfce7]",
+@@ -51,6 +54,7 @@
+   };
+   const dots: Record<SupplierOrder["status"], string> = {
+     pending: "bg-[#b45309]",
++    approved: "bg-[#7c3aed]",
+     confirmed: "bg-primary-container",
+     shipped: "bg-[#0891b2]",
+     delivered: "bg-tertiary-container",
+@@ -93,7 +97,7 @@
+   }
+ 
+   const statusCounts = useMemo(() => {
+-    const c: Record<string, number> = { pending: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
++    const c: Record<string, number> = { pending: 0, approved: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
+     localOrders.forEach((o) => { c[o.status]++; });
+     return c;
+   }, [localOrders]);
+@@ -102,7 +106,7 @@
+     .filter((o) => o.status === "delivered")
+     .reduce((s, o) => s + orderTotal(o), 0);
+ 
+-  const STATUSES: SupplierOrder["status"][] = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
++  const STATUSES: SupplierOrder["status"][] = ["pending", "approved", "confirmed", "shipped", "delivered", "cancelled"];
+ 
+   return (
+     <div className="flex-1 p-8 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
+@@ -215,12 +219,17 @@
+                     <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                       {order.status === "pending" && (
+                         <button
+-                          onClick={() => updateStatus(order.id, "confirmed")}
+-                          className="font-mono text-label-md text-primary-container border border-primary-container px-2 py-1 hover:bg-surface-container-high transition-colors uppercase"
++                          onClick={() => updateStatus(order.id, "approved")}
++                          className="font-mono text-label-md text-[#7c3aed] border border-[#7c3aed] px-2 py-1 hover:bg-[#f3e8ff] transition-colors uppercase"
+                         >
+-                          Confirm
++                          Approve
+                         </button>
+                       )}
++                      {order.status === "approved" && (
++                        <span className="font-mono text-label-md text-on-surface-variant px-2 py-1 uppercase">
++                          Awaiting payment
++                        </span>
++                      )}
+                       {order.status === "confirmed" && (
+                         <button
+                           onClick={() => updateStatus(order.id, "shipped")}
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/lib/actions/orders.ts /home/claude/crv/src/lib/actions/orders.ts
+--- a/src/lib/actions/orders.ts	2026-09-01 08:27:41.388823345 +0000
++++ b/src/lib/actions/orders.ts	2026-09-02 07:34:03.663019309 +0000
+@@ -1,6 +1,7 @@
+ "use server";
+ 
+-import { createClient } from "@/lib/supabase/server";
++import type { SupabaseClient } from "@supabase/supabase-js";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ 
+ export interface OrderItem {
+   id: string;
+@@ -8,6 +9,8 @@
+   product_name: string;
+   quantity: number;
+   unit_price: number;
++  /** Current stock on the supplier's catalog for this product, when linked (evidence for the receipt). */
++  stock_available: number | null;
+ }
+ 
+ export interface Order {
+@@ -17,13 +20,38 @@
+   branch_name: string | null;
+   supplier_id: string;
+   supplier_name: string | null;
+-  status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
++  status: "pending" | "approved" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+   total: number;
+   placed_at: string | null;
+ }
+ 
++/** One milestone in an order's lifecycle, for the receipt's order-history trail. */
++export interface OrderHistoryEntry {
++  key: "placed" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
++  label: string;
++  at: string | null;
++}
++
++/** Payment/payout evidence shown on the receipt once an order has been paid. */
++export interface OrderReceipt {
++  payment: {
++    reference: string;
++    status: string;
++    transactionId: string | null;
++    amountTzs: number;
++    completedAt: string | null;
++  } | null;
++  disbursement: {
++    reference: string;
++    status: string;
++    completedAt: string | null;
++  } | null;
++}
++
+ export interface OrderDetail extends Order {
+   order_items: OrderItem[];
++  history: OrderHistoryEntry[];
++  receipt: OrderReceipt;
+ }
+ 
+ type OrderRow = {
+@@ -36,7 +64,7 @@
+ };
+ 
+ async function hydrateOrders(
+-  supabase: Awaited<ReturnType<typeof createClient>>,
++  supabase: SupabaseClient,
+   orderRows: OrderRow[]
+ ): Promise<Order[]> {
+   if (orderRows.length === 0) return [];
+@@ -88,27 +116,121 @@
+   return hydrateOrders(supabase, (data ?? []) as unknown as OrderRow[]);
+ }
+ 
++/**
++ * Full receipt view of a single order: line items (with current supplier
++ * stock as evidence), the full status history trail, and payment/payout
++ * evidence once paid. `payments`/`disbursements` are service-role-only
++ * tables, so this resolves the caller's identity via the cookie-bound
++ * client first and manually checks they're a party to the order (buyer
++ * branch owner or the seller) before using the service client to read them.
++ */
+ export async function getOrderDetail(orderId: string): Promise<OrderDetail | null> {
+-  const supabase = await createClient();
++  const authClient = await createClient();
++  const { data: { user } } = await authClient.auth.getUser();
++  if (!user) return null;
++
++  const service = await createServiceClient();
++
++  const { data: account } = await service
++    .from("accounts")
++    .select("id")
++    .eq("auth_user_id", user.id)
++    .single();
++  if (!account) return null;
+ 
+-  const { data: order } = await supabase
++  const { data: order } = await service
+     .from("orders")
+-    .select("id, order_reference, buyer_branch_id, seller_id, status, placed_at")
++    .select("id, order_reference, buyer_branch_id, seller_id, status, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at")
+     .eq("id", orderId)
+     .single();
+-
+   if (!order) return null;
+ 
+-  const [hydrated] = await hydrateOrders(supabase, [order] as unknown as OrderRow[]);
++  const { data: branch } = await service
++    .from("branches")
++    .select("account_id")
++    .eq("id", order.buyer_branch_id)
++    .maybeSingle();
++
++  const isBuyer = branch?.account_id === account.id;
++  const isSeller = order.seller_id === account.id;
++  if (!isBuyer && !isSeller) return null; // not a party to this order
++
++  const [hydrated] = await hydrateOrders(service, [order] as unknown as OrderRow[]);
+   if (!hydrated) return null;
+ 
+-  const { data: items } = await supabase
++  const { data: items } = await service
+     .from("order_line_items")
+-    .select("id, order_id, product_name, quantity, unit_price")
++    .select("id, order_id, product_id, product_name, quantity, unit_price")
+     .eq("order_id", orderId);
+ 
++  const productIds = [...new Set((items ?? []).map((i) => i.product_id).filter((id): id is string => !!id))];
++  const { data: catalogRows } = productIds.length
++    ? await service
++        .from("supplier_catalog")
++        .select("product_id, stock_qty")
++        .eq("supplier_id", order.seller_id)
++        .in("product_id", productIds)
++    : { data: [] as { product_id: string; stock_qty: number }[] };
++
++  const stockByProduct = new Map((catalogRows ?? []).map((r) => [r.product_id, r.stock_qty]));
++
++  const orderItems: OrderItem[] = (items ?? []).map((i) => ({
++    id: i.id,
++    order_id: i.order_id,
++    product_name: i.product_name,
++    quantity: i.quantity,
++    unit_price: Number(i.unit_price),
++    stock_available: i.product_id ? stockByProduct.get(i.product_id) ?? null : null,
++  }));
++
++  const history: OrderHistoryEntry[] = (
++    [
++      { key: "placed", label: "Order placed", at: order.placed_at },
++      { key: "approved", label: "Approved by supplier", at: order.approved_at },
++      { key: "confirmed", label: "Paid & confirmed", at: order.confirmed_at },
++      { key: "shipped", label: "Shipped", at: order.shipped_at },
++      { key: "delivered", label: "Delivered", at: order.delivered_at },
++      { key: "cancelled", label: "Cancelled", at: order.cancelled_at },
++    ] as OrderHistoryEntry[]
++  ).filter((h) => h.at !== null || h.key === "placed");
++
++  const { data: payment } = await service
++    .from("payments")
++    .select("reference, status, provider_transaction_id, amount_tzs, completed_at")
++    .eq("order_id", orderId)
++    .order("created_at", { ascending: false })
++    .limit(1)
++    .maybeSingle();
++
++  const { data: disbursement } = await service
++    .from("disbursements")
++    .select("reference, status, completed_at")
++    .eq("order_id", orderId)
++    .order("created_at", { ascending: false })
++    .limit(1)
++    .maybeSingle();
++
+   return {
+     ...hydrated,
+-    order_items: (items ?? []) as OrderItem[],
++    order_items: orderItems,
++    history,
++    receipt: {
++      payment: payment
++        ? {
++            reference: payment.reference,
++            status: payment.status,
++            transactionId: payment.provider_transaction_id,
++            amountTzs: Number(payment.amount_tzs),
++            completedAt: payment.completed_at,
++          }
++        : null,
++      disbursement: disbursement
++        ? {
++            reference: disbursement.reference,
++            status: disbursement.status,
++            completedAt: disbursement.completed_at,
++          }
++        : null,
++    },
+   };
+-}
+\ No newline at end of file
++}
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/lib/actions/supplier.ts /home/claude/crv/src/lib/actions/supplier.ts
+--- a/src/lib/actions/supplier.ts	2026-09-01 08:27:41.388823345 +0000
++++ b/src/lib/actions/supplier.ts	2026-09-02 07:26:02.626601433 +0000
+@@ -38,7 +38,7 @@
+   status: "active" | "archived" | "draft";
+ }
+ 
+-export type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
++export type OrderStatus = "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
+ 
+ /** Inbound order shape expected by SupplierOrdersTable. */
+ export interface SupplierOrder {
+@@ -317,7 +317,11 @@
+ }
+ 
+ const ORDER_FLOW: Record<OrderStatus, OrderStatus[]> = {
+-  pending: ["confirmed", "cancelled"],
++  pending: ["approved", "cancelled"],
++  // "confirmed" is reached only via a completed payment (Payme webhook →
++  // settleOrderPayout), never by direct supplier action — approving an
++  // order just unlocks payment, it doesn't collect it.
++  approved: ["cancelled"],
+   confirmed: ["shipped", "cancelled"],
+   shipped: ["delivered"],
+   delivered: [],
+@@ -327,6 +331,13 @@
+ /**
+  * Advances (or cancels) an order through the fulfilment pipeline. Valid
+  * transitions are enforced server-side and each state stamps its timestamp.
++ *
++ * Approving a `pending` order (→ "approved") is the supplier's commitment to
++ * fulfil it: it decrements `supplier_catalog.stock_qty` for each line item
++ * with a matched product, and notifies the pharmacy that they can now pay.
++ * It intentionally does NOT charge the pharmacy — that only happens once
++ * they call /api/marketplace/pay-order, and the order only reaches
++ * "confirmed" after that payment completes.
+  */
+ export async function updateOrderStatus(
+   id: string,
+@@ -337,7 +348,7 @@
+ 
+   const { data: current } = await supabase
+     .from("orders")
+-    .select("status")
++    .select("id, order_reference, buyer_branch_id, status")
+     .eq("id", id)
+     .eq("seller_id", account.id)
+     .maybeSingle();
+@@ -351,6 +362,7 @@
+   const update: Record<string, string> = {
+     status,
+     updated_at: stamp,
++    approved_at: status === "approved" ? stamp : undefined as unknown as string,
+     confirmed_at: status === "confirmed" ? stamp : undefined as unknown as string,
+     shipped_at: status === "shipped" ? stamp : undefined as unknown as string,
+     delivered_at: status === "delivered" ? stamp : undefined as unknown as string,
+@@ -369,6 +381,39 @@
+     .eq("seller_id", account.id);
+ 
+   if (updateError) return { error: updateError.message };
++
++  if (status === "approved") {
++    const { data: lines } = await supabase
++      .from("order_line_items")
++      .select("product_id, quantity")
++      .eq("order_id", id);
++
++    for (const line of lines ?? []) {
++      if (!line.product_id) continue; // legacy line item with no product link — nothing to decrement
++      const { data: catalogRow } = await supabase
++        .from("supplier_catalog")
++        .select("id, stock_qty")
++        .eq("supplier_id", account.id)
++        .eq("product_id", line.product_id)
++        .maybeSingle();
++      if (!catalogRow) continue;
++      const nextStock = Math.max(0, Number(catalogRow.stock_qty) - Number(line.quantity));
++      await supabase.from("supplier_catalog").update({ stock_qty: nextStock }).eq("id", catalogRow.id);
++    }
++
++    const { data: branch } = await supabase.from("branches").select("account_id").eq("id", current.buyer_branch_id).maybeSingle();
++    if (branch?.account_id) {
++      await supabase.from("notifications").insert({
++        account_id: branch.account_id,
++        kind: "order",
++        title: "Order approved",
++        body: `${account.name ?? "Your supplier"} approved order ${current.order_reference}. Pay now to confirm it.`,
++        route: "/dashboard/orders",
++        read: false,
++      });
++    }
++  }
++
+   return { error: null };
+ }
+ 
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/lib/i18n/translations.ts /home/claude/crv/src/lib/i18n/translations.ts
+--- a/src/lib/i18n/translations.ts	2026-09-01 08:27:41.495800216 +0000
++++ b/src/lib/i18n/translations.ts	2026-09-02 07:34:43.810789899 +0000
+@@ -317,8 +317,8 @@
+   "mkt.quote.empty":   { EN: "No items added yet.", SW: "Hakuna bidhaa zilizoongezwa bado." },
+   "mkt.quote.total":   { EN: "Estimated Total", SW: "Jumla ya Makadirio" },
+   "mkt.quote.submit":  { EN: "Submit Quote Request", SW: "Wasilisha Ombi la Nukuu" },
+-  "mkt.checkout.wallet_label": { EN: "Payme wallet (charged on order)", SW: "Mkoba wa Payme (itakayotozwa)" },
+-  "mkt.checkout.escrow_note": { EN: "Payment held in escrow via Payme Africa until delivery.", SW: "Malipo yatawekwa kwenye escrow kupitia Payme Africa hadi uwasilishaji." },
++  "mkt.checkout.wallet_label": { EN: "Payme wallet (used once the supplier approves)", SW: "Mkoba wa Payme (utatumika baada ya muuzaji kuidhinisha)" },
++  "mkt.checkout.escrow_note": { EN: "You'll pay via Payme Africa only after the supplier approves this order — nothing is charged now.", SW: "Utalipa kupitia Payme Africa baada tu ya muuzaji kuidhinisha agizo hili — hakuna malipo sasa." },
+   "mkt.checkout.place_order": { EN: "Place Order & Pay", SW: "Weka Oda na Lipa" },
+ 
+   // Payment settings form (shared pharmacy + supplier)
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' crv_baseline/src/lib/supabase/server.ts /home/claude/crv/src/lib/supabase/server.ts
+--- a/src/lib/supabase/server.ts	2026-09-01 08:27:41.391287678 +0000
++++ b/src/lib/supabase/server.ts	2026-09-01 08:25:53.293985253 +0000
+@@ -30,7 +30,7 @@
+  */
+ 
+ import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
+-import type { SupabaseClient } from "@supabase/supabase-js";
++import { createClient as createSupabaseJsClient, type SupabaseClient } from "@supabase/supabase-js";
+ import { cookies } from "next/headers";
+ 
+ import { createMockSupabase, mockUserForType } from "@/lib/mock/supabase";
+@@ -129,18 +129,36 @@
+  * validated the HQ session cookie via `assertHQAuth()`. Never expose this client
+  * to user-facing code or return its raw output to the browser.
+  *
+- * Note: Cookies are still passed for consistency with `@supabase/ssr` requirements,
+- * but the service-role key is what grants elevated access — not the user session.
++ * IMPORTANT: this client is intentionally built WITHOUT `@supabase/ssr` cookie
++ * wiring. `@supabase/ssr`'s `createServerClient()` restores the caller's own
++ * session from cookies and then overwrites the PostgREST `Authorization`
++ * header with that session's access token — silently downgrading every
++ * `.from()` query back to the signed-in user's own role, no matter which key
++ * you passed in. Since most callers here run inside an authenticated
++ * pharmacy/supplier request, that downgrade was invisible for tables whose
++ * RLS policies happen to also allow the owning user, but it hard-fails (RLS
++ * violation) for tables restricted to `service_role` only, e.g.
++ * `subscription_payments` / `branch_supplier_connections`. Using the plain
++ * `@supabase/supabase-js` client here, with no session/cookie store, keeps
++ * every request — REST and Auth alike — on the service-role key.
++ *
++ * This client has NO notion of "who is signed in" (calling `.auth.getUser()`
++ * on it will always return null). Callers that need both the caller's
++ * identity AND elevated table access should resolve identity separately via
++ * `createClient()` (or `getUserFromRequest()` in Route Handlers) and use this
++ * client only for the privileged `.from()` calls.
+  *
+- * @returns Service-role server client (bypasses RLS)
++ * @returns Service-role client (bypasses RLS, no user session)
+  */
+ export async function createServiceClient(): Promise<SupabaseServerClient> {
+-  const cookieStore = await cookies();
+-  if (IS_MOCK) return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
+-  return createServerClient(
++  if (IS_MOCK) {
++    const cookieStore = await cookies();
++    return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
++  }
++  return createSupabaseJsClient(
+     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+-    { cookies: cookieMethods(cookieStore) }
++    { auth: { autoRefreshToken: false, persistSession: false } }
+   );
+ }
+ 
+@@ -149,18 +167,20 @@
+  * (e.g. `auth.admin.createUser`, `auth.admin.deleteUser`) used when provisioning
+  * web-login operator accounts for the /branch portal.
+  *
++ * Same cookie-free construction as `createServiceClient()` above, and for the
++ * same reason: cookie-bound clients silently swap the service-role
++ * Authorization header for the caller's own session token when one exists.
+  * Session persistence is disabled so the admin token is never minted into a
+  * browser cookie. NEVER expose this client to client components.
+  */
+ export async function createAdminClient(): Promise<SupabaseServerClient> {
+-  const cookieStore = await cookies();
+-  if (IS_MOCK) return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
+-  return createServerClient(
++  if (IS_MOCK) {
++    const cookieStore = await cookies();
++    return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
++  }
++  return createSupabaseJsClient(
+     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+-    {
+-      cookies: cookieMethods(cookieStore),
+-      auth: { autoRefreshToken: false, persistSession: false },
+-    }
++    { auth: { autoRefreshToken: false, persistSession: false } }
+   );
+ }

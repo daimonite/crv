@@ -1,0 +1,50 @@
+diff a/src/lib/actions/supplier.ts b/src/lib/actions/supplier.ts	(rejected hunks)
+@@ -337,7 +348,7 @@
+ 
+   const { data: current } = await supabase
+     .from("orders")
+-    .select("status")
++    .select("id, order_reference, buyer_branch_id, status")
+     .eq("id", id)
+     .eq("seller_id", account.id)
+     .maybeSingle();
+@@ -369,6 +381,39 @@
+     .eq("seller_id", account.id);
+ 
+   if (updateError) return { error: updateError.message };
++
++  if (status === "approved") {
++    const { data: lines } = await supabase
++      .from("order_line_items")
++      .select("product_id, quantity")
++      .eq("order_id", id);
++
++    for (const line of lines ?? []) {
++      if (!line.product_id) continue; // legacy line item with no product link — nothing to decrement
++      const { data: catalogRow } = await supabase
++        .from("supplier_catalog")
++        .select("id, stock_qty")
++        .eq("supplier_id", account.id)
++        .eq("product_id", line.product_id)
++        .maybeSingle();
++      if (!catalogRow) continue;
++      const nextStock = Math.max(0, Number(catalogRow.stock_qty) - Number(line.quantity));
++      await supabase.from("supplier_catalog").update({ stock_qty: nextStock }).eq("id", catalogRow.id);
++    }
++
++    const { data: branch } = await supabase.from("branches").select("account_id").eq("id", current.buyer_branch_id).maybeSingle();
++    if (branch?.account_id) {
++      await supabase.from("notifications").insert({
++        account_id: branch.account_id,
++        kind: "order",
++        title: "Order approved",
++        body: `${account.name ?? "Your supplier"} approved order ${current.order_reference}. Pay now to confirm it.`,
++        route: "/dashboard/orders",
++        read: false,
++      });
++    }
++  }
++
+   return { error: null };
+ }
+ 

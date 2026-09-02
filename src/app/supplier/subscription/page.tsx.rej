@@ -1,0 +1,29 @@
+diff a/src/app/supplier/subscription/page.tsx b/src/app/supplier/subscription/page.tsx	(rejected hunks)
+@@ -7,7 +7,7 @@
+  * flow through Payme Africa; the webhook activates a 30-day subscription.
+  */
+ import { redirect } from "next/navigation";
+-import { createServiceClient } from "@/lib/supabase/server";
++import { createClient, createServiceClient } from "@/lib/supabase/server";
+ import { getPlans, isSubscribedActive } from "@/lib/subscription";
+ import SupplierSidebar from "@/components/SupplierSidebar";
+ import Link from "next/link";
+@@ -16,12 +16,16 @@
+ const UNLIMITED = 999999;
+ 
+ export default async function SupplierSubscriptionPage() {
+-  const supabase = await createServiceClient();
++  // Identity comes from the cookie-bound client; `createServiceClient()` has
++  // no session of its own and is used below only for privileged reads.
++  const authClient = await createClient();
+   const {
+     data: { user },
+-  } = await supabase.auth.getUser();
++  } = await authClient.auth.getUser();
+   if (!user) redirect("/auth?next=/supplier/subscription");
+ 
++  const supabase = await createServiceClient();
++
+   const { data: account } = await supabase
+     .from("accounts")
+     .select("id, name, type, subscription_status, subscription_expires_at, subscription_plan, download_enabled, verified, trial_ends_at")

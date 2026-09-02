@@ -9,10 +9,11 @@ interface OrdersTableProps {
   orders: Order[];
 }
 
-type StatusFilter = "all" | "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+type StatusFilter = "all" | "pending" | "approved" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-50 text-amber-700",
+  approved: "bg-purple-50 text-purple-700",
   confirmed: "bg-blue-50 text-blue-700",
   processing: "bg-purple-50 text-purple-700",
   shipped: "bg-cyan-50 text-cyan-700",
@@ -26,6 +27,18 @@ interface OrderLineItem {
   product_name: string;
   quantity: number;
   unit_price: number;
+  stock_available: number | null;
+}
+
+interface OrderHistoryEntry {
+  key: string;
+  label: string;
+  at: string | null;
+}
+
+interface OrderReceipt {
+  payment: { reference: string; status: string; transactionId: string | null; amountTzs: number; completedAt: string | null } | null;
+  disbursement: { reference: string; status: string; completedAt: string | null } | null;
 }
 
 export default function OrdersTable({ orders }: OrdersTableProps) {
@@ -35,7 +48,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [orderDetail, setOrderDetail] = useState<{ order_items: OrderLineItem[] } | null>(null);
+  const [orderDetail, setOrderDetail] = useState<{ order_items: OrderLineItem[]; history?: OrderHistoryEntry[]; receipt?: OrderReceipt } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [payWallet, setPayWallet] = useState("");
   const [payBusy, setPayBusy] = useState(false);
@@ -133,6 +146,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
           >
             <option value="all">{t("dash.orders.allStatuses")}</option>
             <option value="pending">{t("dash.orders.status.pending")}</option>
+            <option value="approved">Approved</option>
             <option value="confirmed">{t("dash.orders.status.confirmed")}</option>
             <option value="processing">{t("dash.orders.status.processing")}</option>
             <option value="shipped">{t("dash.orders.status.shipped")}</option>
@@ -279,7 +293,12 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                         <div key={item.id || i} className="py-3 flex items-center justify-between">
                           <div>
                             <p className="text-sm text-ink-deep">{item.product_name ?? "—"}</p>
-                            <p className="text-xs text-on-surface-variant">{item.quantity} × TSh {item.unit_price.toLocaleString()}</p>
+                            <p className="text-xs text-on-surface-variant">
+                              {item.quantity} × TSh {item.unit_price.toLocaleString()}
+                              {typeof item.stock_available === "number" && (
+                                <span className="ml-2 text-on-surface-variant/70">· {item.stock_available.toLocaleString()} in stock at supplier</span>
+                              )}
+                            </p>
                           </div>
                           <p className="text-sm font-medium text-ink-deep">
                             TSh {(item.quantity * item.unit_price).toLocaleString()}
@@ -299,7 +318,31 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                   </p>
                 </div>
 
+                {Array.isArray(orderDetail.history) && orderDetail.history.length > 0 && (
+                  <div className="border-t border-outline-variant pt-4">
+                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">Order history</p>
+                    <div className="flex flex-col gap-1.5">
+                      {orderDetail.history.map((h) => (
+                        <div key={h.key} className="flex items-center justify-between text-xs">
+                          <span className={h.at ? "text-ink-deep" : "text-on-surface-variant/50"}>{h.label}</span>
+                          <span className={h.at ? "text-on-surface-variant" : "text-on-surface-variant/50"}>
+                            {h.at ? new Date(h.at).toLocaleString() : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {selectedOrder.status === "pending" && (
+                  <div className="border-t border-outline-variant pt-4">
+                    <p className="text-sm text-on-surface-variant">
+                      Waiting for the supplier to review and approve this order. You'll be able to pay once it's approved.
+                    </p>
+                  </div>
+                )}
+
+                {selectedOrder.status === "approved" && (
                   <div className="border-t border-outline-variant pt-4">
                     <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">
                       Pay order via mobile money
@@ -326,6 +369,44 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                     </div>
                     {payError && <p className="mt-2 text-xs text-error">{payError}</p>}
                     {payMessage && <p className="mt-2 text-xs text-success">{payMessage}</p>}
+                  </div>
+                )}
+
+                {orderDetail.receipt?.payment && (
+                  <div className="border-t border-outline-variant pt-4">
+                    <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">Receipt</p>
+                    <div className="flex flex-col gap-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">Payment reference</span>
+                        <span className="text-ink-deep font-mono">{orderDetail.receipt.payment.reference}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">Status</span>
+                        <span className="text-ink-deep capitalize">{orderDetail.receipt.payment.status}</span>
+                      </div>
+                      {orderDetail.receipt.payment.transactionId && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-on-surface-variant">Transaction ID</span>
+                          <span className="text-ink-deep font-mono">{orderDetail.receipt.payment.transactionId}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">Amount</span>
+                        <span className="text-ink-deep">TSh {orderDetail.receipt.payment.amountTzs.toLocaleString()}</span>
+                      </div>
+                      {orderDetail.receipt.payment.completedAt && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-on-surface-variant">Paid at</span>
+                          <span className="text-ink-deep">{new Date(orderDetail.receipt.payment.completedAt).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {orderDetail.receipt.disbursement && (
+                        <div className="flex items-center justify-between pt-1 border-t border-outline-variant/30 mt-1">
+                          <span className="text-on-surface-variant">Supplier payout</span>
+                          <span className="text-ink-deep capitalize">{orderDetail.receipt.disbursement.status}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

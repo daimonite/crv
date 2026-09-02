@@ -3,8 +3,10 @@
  * @description Inbound purchase orders table for supplier accounts.
  *
  * Displays orders from pharmacies with expandable line-item details.
- * Status transitions (pending → confirmed → shipped → delivered) hit the
- * live `orders` table via the `updateOrderStatus` server action.
+ * Status transitions (pending → approved → confirmed → shipped → delivered)
+ * hit the live `orders` table via the `updateOrderStatus` server action.
+ * "confirmed" is reached only once the pharmacy's payment completes — the
+ * supplier's own action stops at "approved".
  *
  * Order totals are always derived from line items at render time to
  * guarantee consistency — never rely on a pre-stored `total_value` field.
@@ -27,7 +29,7 @@ export interface SupplierOrder {
   currency: string;
   /** ISO date string of when the order was placed. */
   placedAt: string;
-  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
 }
 
 /** Always derive the order total from its line items to guarantee consistency. */
@@ -44,6 +46,7 @@ type StatusFilter = "all" | SupplierOrder["status"];
 function StatusBadge({ status }: { status: SupplierOrder["status"] }) {
   const styles: Record<SupplierOrder["status"], string> = {
     pending: "border-[#b45309] text-[#b45309] bg-[#fef3c7]",
+    approved: "border-[#7c3aed] text-[#7c3aed] bg-[#f3e8ff]",
     confirmed: "border-primary-container text-primary-container bg-surface-container",
     shipped: "border-[#0891b2] text-[#0891b2] bg-[#ecfeff]",
     delivered: "border-tertiary-container text-tertiary bg-[#dcfce7]",
@@ -51,6 +54,7 @@ function StatusBadge({ status }: { status: SupplierOrder["status"] }) {
   };
   const dots: Record<SupplierOrder["status"], string> = {
     pending: "bg-[#b45309]",
+    approved: "bg-[#7c3aed]",
     confirmed: "bg-primary-container",
     shipped: "bg-[#0891b2]",
     delivered: "bg-tertiary-container",
@@ -93,7 +97,7 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
   }
 
   const statusCounts = useMemo(() => {
-    const c: Record<string, number> = { pending: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
+    const c: Record<string, number> = { pending: 0, approved: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
     localOrders.forEach((o) => { c[o.status]++; });
     return c;
   }, [localOrders]);
@@ -102,7 +106,7 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
     .filter((o) => o.status === "delivered")
     .reduce((s, o) => s + orderTotal(o), 0);
 
-  const STATUSES: SupplierOrder["status"][] = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
+  const STATUSES: SupplierOrder["status"][] = ["pending", "approved", "confirmed", "shipped", "delivered", "cancelled"];
 
   return (
     <div className="flex-1 p-8 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
@@ -215,11 +219,16 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
                     <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                       {order.status === "pending" && (
                         <button
-                          onClick={() => updateStatus(order.id, "confirmed")}
-                          className="font-mono text-label-md text-primary-container border border-primary-container px-2 py-1 hover:bg-surface-container-high transition-colors uppercase"
+                          onClick={() => updateStatus(order.id, "approved")}
+                          className="font-mono text-label-md text-[#7c3aed] border border-[#7c3aed] px-2 py-1 hover:bg-[#f3e8ff] transition-colors uppercase"
                         >
-                          Confirm
+                          Approve
                         </button>
+                      )}
+                      {order.status === "approved" && (
+                        <span className="font-mono text-label-md text-on-surface-variant px-2 py-1 uppercase">
+                          Awaiting payment
+                        </span>
                       )}
                       {order.status === "confirmed" && (
                         <button

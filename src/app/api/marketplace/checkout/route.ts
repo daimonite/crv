@@ -55,11 +55,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Prefer the wallet saved in payment_settings, fall back to the accounts column.
-  const walletFromSettings = (
-    await service.from("payment_settings").select("payme_wallet_number").eq("account_id", account.id).maybeSingle()
-  ).data as { payme_wallet_number?: string | null } | null;
-
   const { data: branch } = await service
     .from("branches")
     .select("id, account_id")
@@ -152,6 +147,7 @@ export async function POST(request: NextRequest) {
   const dbLineItems = lineItems.map((item) => ({
     id: crypto.randomUUID(),
     order_id: orderId,
+    product_id: item.productId,
     product_name: item.productName,
     quantity: item.quantity,
     unit_price: item.unitPrice,
@@ -163,83 +159,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: lineError.message }, { status: 500 });
   }
 
-  // If no payment info or zero total, return order without charging
-  const walletMsisdn = (
-    msisdn?.trim() ||
-    walletFromSettings?.payme_wallet_number ||
-    (account as unknown as { payme_wallet_number?: string }).payme_wallet_number ||
-    ""
-  ).trim();
-  if (!walletMsisdn || total <= 0) {
-    return NextResponse.json({
-      orderId,
-      orderRef,
-      total,
-      payment: null,
-      message: walletMsisdn ? undefined : "Order created. Add a Payme wallet number in settings to enable escrow payment.",
-    });
+  // Orders are no longer charged at checkout — the pharmacy pays only after
+  // the supplier reviews stock/delivery capacity and approves the order
+  // (see PATCH /api/marketplace/orders/[id]/approve and POST /api/marketplace/pay-order).
+  // If a wallet number was given up front, save it now so it's pre-filled when paying later.
+  const trimmedMsisdn = msisdn?.trim();
+  if (trimmedMsisdn) {
+    const { error: walletSaveError } = await service
+      .from("payment_settings")
+      .upsert({ account_id: account.id, payme_wallet_number: trimmedMsisdn }, { onConflict: "account_id" });
+    if (walletSaveError) {
+      console.error("[marketplace/checkout] wallet save error:", walletSaveError.message);
+    }
   }
-
-  // Create payment record and trigger Payme collection
-  const amountTzs = Math.round(total);
-  const reference = `PAY-${orderRef}-${orderId.slice(0, 8)}`;
-  const idempotencyKey = body.idempotencyKey || `${orderId}-${Date.now()}`;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-  const { error: payInsertError } = await service.from("payments").insert({
-    account_id: account.id,
-    order_id: orderId,
-    reference,
-    idempotency_key: idempotencyKey,
-    amount_tzs: amountTzs,
-    msisdn: walletMsisdn,
-    status: "pending",
-  });
-
-  if (payInsertError) {
-    // Order already created; don't fail checkout, just report payment issue
-    console.error("[marketplace/checkout] payment insert error:", payInsertError);
-    return NextResponse.json({
-      orderId,
-      orderRef,
-      total,
-      payment: { status: "failed", error: payInsertError.message },
-    });
-  }
-
-  const { initiateCollection } = await import("@/lib/payme");
-  const { data: paymeData, error: paymeError } = await initiateCollection({
-    amount: amountTzs,
-    msisdn: walletMsisdn,
-    reference,
-    callback_url: `${appUrl}/api/webhooks/payme`,
-  });
-
-  if (paymeError) {
-    await service.from("payments").update({ status: "failed", failure_reason: paymeError }).eq("reference", reference);
-    return NextResponse.json({
-      orderId,
-      orderRef,
-      total,
-      payment: { status: "failed", reference, error: paymeError },
-    });
-  }
-
-  await service.from("payments").update({
-    provider_transaction_id: paymeData?.transaction_id || null,
-    status: paymeData?.payment_status === "COMPLETED" ? "completed" : "pending",
-    completed_at: paymeData?.payment_status === "COMPLETED" ? new Date().toISOString() : null,
-  }).eq("reference", reference);
 
   return NextResponse.json({
     orderId,
     orderRef,
     total,
-    payment: {
-      status: paymeData?.payment_status === "COMPLETED" ? "completed" : "pending",
-      reference,
-      transaction_id: paymeData?.transaction_id ?? null,
-      message: paymeData?.payment_status === "COMPLETED" ? "Payment completed" : "Payment initiated — you'll receive a mobile money prompt to confirm.",
-    },
+    payment: null,
+    message: "Order sent to the supplier for approval. You'll be able to pay once they approve it.",
   });
 }
