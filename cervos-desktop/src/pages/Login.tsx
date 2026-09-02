@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
 import { queryDb } from '../lib/database'
@@ -15,6 +15,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  const [lockedReason, setLockedReason] = useState('')
 
   useEffect(() => {
     loadOperators()
@@ -55,6 +56,13 @@ export default function Login() {
       const branchRes = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
       const branchId = branchRes.length > 0 ? JSON.parse(branchRes[0].value) : null
       const sub = branchId ? await fetchBranchSubscription(branchId) : null
+      if (sub && sub.subscription_status === 'locked') {
+        setLockedReason(sub.locked_reason === 'max_branches_exceeded'
+          ? "This branch isn't covered by your current plan. Upgrade your subscription to restore POS access here."
+          : 'Upgrade your subscription for desktop POS access.')
+        setBlocked(true)
+        return
+      }
       if (sub && (sub.subscription_status === 'inactive' || sub.subscription_status === 'past_due')) {
         if (sub.subscription_status === 'inactive' && sub.grace_ends_at) {
           const graceEnd = new Date(sub.grace_ends_at)
@@ -87,9 +95,11 @@ export default function Login() {
           <div className="w-16 h-16 mx-auto mb-6">
             <Logo size="lg" className="mx-auto" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-on-surface mb-2">Subscription Inactive</h1>
+          <h1 className="text-2xl font-display font-bold text-on-surface mb-2">
+            {lockedReason ? 'Upgrade Required' : 'Subscription Inactive'}
+          </h1>
           <p className="text-gray-400 mb-6">
-            Your subscription is inactive or past due. Please update your payment method to continue.
+            {lockedReason || 'Your subscription is inactive or past due. Please update your payment method to continue.'}
           </p>
           <Link
             to="/settings"

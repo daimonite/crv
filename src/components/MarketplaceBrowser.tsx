@@ -389,20 +389,14 @@ export default function MarketplaceBrowser({ products, branches }: MarketplaceBr
                                 msisdn: walletMsisdn.trim() || undefined,
                               }),
                             });
-                            const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; message?: string; payment?: { status: string; error?: string; message?: string } };
+                            const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; message?: string };
                             if (!res.ok) {
                               setSubmitError(json.error || `Checkout failed (${res.status})`);
                               hasError = true;
                               break;
                             }
                             if (json.orderRef || json.orderId) lastRef = json.orderRef || `ORD-${(json.orderId as string).slice(0,8).toUpperCase()}`;
-                            if (json.payment) {
-                              if (json.payment.status === "completed") lastPaymentMsg = "Payment completed.";
-                              else if (json.payment.status === "pending") lastPaymentMsg = json.payment.message || "Payment initiated — check your phone for the mobile money prompt.";
-                              else if (json.payment.error) lastPaymentMsg = `Payment failed: ${json.payment.error}`;
-                            } else if (json.message) {
-                              lastPaymentMsg = json.message;
-                            }
+                            if (json.message) lastPaymentMsg = json.message;
                           } catch (e) {
                             setSubmitError(e instanceof Error ? e.message : "Checkout failed");
                             hasError = true;

@@ -35,19 +35,16 @@ export async function POST(request: NextRequest) {
 
   const { data: order } = await service
     .from("orders")
-    .select("id, order_reference, seller_id, buyer_branch_id, status, currency")
+    .select("id, order_reference, seller_id, buyer_branch_id, status, currency, supplier_approved_at")
     .eq("id", orderId)
     .single();
 
   if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
-  if (order.status === "pending") {
-    return NextResponse.json(
-      { error: "This order is still awaiting supplier approval. You can pay once the supplier approves it.", code: "AWAITING_APPROVAL" },
-      { status: 409 }
-    );
+  if (order.status !== "pending") {
+    return NextResponse.json({ error: "This order can only be paid while pending." }, { status: 409 });
   }
-  if (order.status !== "approved") {
-    return NextResponse.json({ error: "This order can only be paid while it's approved and unpaid." }, { status: 409 });
+  if (!order.supplier_approved_at) {
+    return NextResponse.json({ error: "This order is still waiting on the supplier to approve it. You can't pay until they do." }, { status: 403 });
   }
 
   // Authorization: the buyer branch must belong to the calling account.

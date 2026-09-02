@@ -308,7 +308,7 @@ export async function getBranchTransactions(): Promise<BranchTransaction[]> {
     });
   }
 
-  for (const pay of (payments ?? []) as Array<{
+  for (const pay of (payments ?? []) as unknown as Array<{
     id: string;
     amount_tzs: number;
     status: string;

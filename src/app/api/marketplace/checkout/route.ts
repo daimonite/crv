@@ -159,24 +159,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: lineError.message }, { status: 500 });
   }
 
-  // Orders are no longer charged at checkout — the pharmacy pays only after
-  // the supplier reviews stock/delivery capacity and approves the order
-  // (see PATCH /api/marketplace/orders/[id]/approve and POST /api/marketplace/pay-order).
-  // If a wallet number was given up front, save it now so it's pre-filled when paying later.
-  const trimmedMsisdn = msisdn?.trim();
-  if (trimmedMsisdn) {
-    const { error: walletSaveError } = await service
-      .from("payment_settings")
-      .upsert({ account_id: account.id, payme_wallet_number: trimmedMsisdn }, { onConflict: "account_id" });
-    if (walletSaveError) {
-      console.error("[marketplace/checkout] wallet save error:", walletSaveError.message);
-    }
-  }
+  // No payment is taken here. The order sits at `pending` with
+  // supplier_approved_at = NULL until the supplier approves it
+  // (src/lib/actions/supplier.ts:approveOrderForPayment). Only then can the
+  // pharmacy pay — via /api/marketplace/pay-order — using this wallet number
+  // (kept for reference/prefill, not charged now).
+  const walletMsisdn = (
+    msisdn?.trim() ||
+    (account as unknown as { payme_wallet_number?: string }).payme_wallet_number ||
+    ""
+  ).trim();
 
   return NextResponse.json({
     orderId,
     orderRef,
     total,
+    walletMsisdn: walletMsisdn || null,
     payment: null,
     message: "Order sent to the supplier for approval. You'll be able to pay once they approve it.",
   });

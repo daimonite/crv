@@ -1,4 +1,4 @@
-﻿import { queryDb, executeDb, generateId } from './database'
+import { queryDb, executeDb, generateId } from './database'
 import { queueForSync } from './sync'
 import type { Operator, Branch } from '../types'
 
@@ -75,14 +75,24 @@ export async function fetchBranchSubscription(branchId: string): Promise<{
   subscription_status: string
   subscription_tier: string
   grace_ends_at: string | null
+  locked_reason: string | null
 } | null> {
-  const results = await queryDb('SELECT subscription_status, subscription_tier, grace_ends_at FROM branches WHERE id = ?', [branchId])
-  if (results.length === 0) return null
-  const b = results[0]
+  // Subscription/lock state lives in app_settings, not the local `branches`
+  // row (which has no locked_reason column) — app_settings is what every
+  // sync cycle writes to from the real branches row in Supabase, and it's
+  // also what an instant HQ lock command updates directly, so it's the
+  // more current of the two for this device's own branch.
+  void branchId
+  const statusRes = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_status'")
+  if (statusRes.length === 0) return null
+  const tierRes = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_tier'")
+  const graceRes = await queryDb("SELECT value FROM app_settings WHERE key = 'grace_ends_at'")
+  const lockedRes = await queryDb("SELECT value FROM app_settings WHERE key = 'locked_reason'")
   return {
-    subscription_status: b.subscription_status || 'trial',
-    subscription_tier: b.subscription_tier || 'free',
-    grace_ends_at: b.grace_ends_at || null,
+    subscription_status: JSON.parse(statusRes[0].value) || 'trial',
+    subscription_tier: tierRes.length ? JSON.parse(tierRes[0].value) || 'free' : 'free',
+    grace_ends_at: graceRes.length ? JSON.parse(graceRes[0].value) : null,
+    locked_reason: lockedRes.length ? JSON.parse(lockedRes[0].value) : null,
   }
 }
 

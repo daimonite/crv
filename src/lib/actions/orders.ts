@@ -20,7 +20,8 @@ export interface Order {
   branch_name: string | null;
   supplier_id: string;
   supplier_name: string | null;
-  status: "pending" | "approved" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+  supplier_approved_at: string | null;
   total: number;
   placed_at: string | null;
 }
@@ -60,6 +61,7 @@ type OrderRow = {
   buyer_branch_id: string;
   seller_id: string;
   status: string;
+  supplier_approved_at: string | null;
   placed_at: string | null;
 };
 
@@ -94,6 +96,7 @@ async function hydrateOrders(
     supplier_id: o.seller_id,
     supplier_name: sellerName.get(o.seller_id) ?? null,
     status: o.status as Order["status"],
+    supplier_approved_at: o.supplier_approved_at,
     total: totals.get(o.id) ?? 0,
     placed_at: o.placed_at,
   }));
@@ -109,7 +112,7 @@ export async function getOrders(accountId: string): Promise<Order[]> {
 
   const { data } = await supabase
     .from("orders")
-    .select("id, order_reference, buyer_branch_id, seller_id, status, placed_at")
+    .select("id, order_reference, buyer_branch_id, seller_id, status, supplier_approved_at, placed_at")
     .in("buyer_branch_id", branchIds)
     .order("placed_at", { ascending: false });
 
@@ -140,7 +143,7 @@ export async function getOrderDetail(orderId: string): Promise<OrderDetail | nul
 
   const { data: order } = await service
     .from("orders")
-    .select("id, order_reference, buyer_branch_id, seller_id, status, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at")
+    .select("id, order_reference, buyer_branch_id, seller_id, status, supplier_approved_at, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at")
     .eq("id", orderId)
     .single();
   if (!order) return null;

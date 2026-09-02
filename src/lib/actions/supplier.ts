@@ -38,7 +38,7 @@ export interface CatalogProduct {
   status: "active" | "archived" | "draft";
 }
 
-export type OrderStatus = "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
+export type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
 
 /** Inbound order shape expected by SupplierOrdersTable. */
 export interface SupplierOrder {
@@ -49,6 +49,7 @@ export interface SupplierOrder {
   currency: string;
   placedAt: string;
   status: OrderStatus;
+  supplierApprovedAt: string | null;
   products: { name: string; qty: number; unitPrice: number }[];
 }
 
@@ -276,6 +277,7 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
     currency: string;
     status: OrderStatus;
     placed_at: string;
+    supplier_approved_at: string | null;
     branches: {
       id: string;
       name: string;
@@ -290,7 +292,7 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
 
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, order_reference, currency, status, placed_at, branches!buyer_branch_id(id, name, accounts(id, name)), order_line_items(product_name, quantity, unit_price)")
+    .select("id, order_reference, currency, status, placed_at, supplier_approved_at, branches!buyer_branch_id(id, name, accounts(id, name)), order_line_items(product_name, quantity, unit_price)")
     .eq("seller_id", account.id)
     .order("placed_at", { ascending: false });
 
@@ -302,6 +304,7 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
     currency: o.currency,
     placedAt: o.placed_at,
     status: o.status,
+    supplierApprovedAt: o.supplier_approved_at,
     products: (o.order_line_items ?? []).map((line) => ({
       name: line.product_name,
       qty: line.quantity,
@@ -310,12 +313,14 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
   }));
 }
 
+// `confirmed` is reached ONLY via a successful Payme payment (the
+// /api/webhooks/payme handler flips pending → confirmed once the pharmacy's
+// collection completes). It is deliberately not reachable from here — a
+// supplier can no longer hand-wave an order to "confirmed" without a real
+// payment. Approval (see approveOrderForPayment below) is a separate signal
+// that only unlocks the pharmacy's ability to pay; it doesn't move `status`.
 const ORDER_FLOW: Record<OrderStatus, OrderStatus[]> = {
-  pending: ["approved", "cancelled"],
-  // "confirmed" is reached only via a completed payment (Payme webhook →
-  // settleOrderPayout), never by direct supplier action — approving an
-  // order just unlocks payment, it doesn't collect it.
-  approved: ["cancelled"],
+  pending: ["cancelled"],
   confirmed: ["shipped", "cancelled"],
   shipped: ["delivered"],
   delivered: [],
@@ -325,13 +330,6 @@ const ORDER_FLOW: Record<OrderStatus, OrderStatus[]> = {
 /**
  * Advances (or cancels) an order through the fulfilment pipeline. Valid
  * transitions are enforced server-side and each state stamps its timestamp.
- *
- * Approving a `pending` order (→ "approved") is the supplier's commitment to
- * fulfil it: it decrements `supplier_catalog.stock_qty` for each line item
- * with a matched product, and notifies the pharmacy that they can now pay.
- * It intentionally does NOT charge the pharmacy — that only happens once
- * they call /api/marketplace/pay-order, and the order only reaches
- * "confirmed" after that payment completes.
  */
 export async function updateOrderStatus(
   id: string,
@@ -356,7 +354,6 @@ export async function updateOrderStatus(
   const update: Record<string, string> = {
     status,
     updated_at: stamp,
-    approved_at: status === "approved" ? stamp : undefined as unknown as string,
     confirmed_at: status === "confirmed" ? stamp : undefined as unknown as string,
     shipped_at: status === "shipped" ? stamp : undefined as unknown as string,
     delivered_at: status === "delivered" ? stamp : undefined as unknown as string,
@@ -376,87 +373,102 @@ export async function updateOrderStatus(
 
   if (updateError) return { error: updateError.message };
 
-  // Delivery is the moment stock actually changes hands: land the order's
-  // line items into the buyer branch's inventory (batches) so marketplace
-  // orders show up as usable stock, not just a status on the Orders screen.
-  // This writes into another account's table, so it must go through the
-  // service client — the supplier's own RLS-scoped client has no access to
-  // a pharmacy branch's batches.
   if (status === "delivered") {
-    const receiveError = await receiveOrderIntoInventory(id, current.buyer_branch_id, current.order_reference);
-    if (receiveError) {
-      // The order status change already succeeded; surface the inventory
-      // failure separately rather than rolling back a real delivery.
-      console.error(`[updateOrderStatus] failed to receive order ${id} into inventory:`, receiveError);
-    }
+    const receiveError = await receiveOrderIntoInventory(id);
+    // Delivery itself already succeeded and was recorded — a receiving
+    // failure shouldn't roll that back or block the supplier's action.
+    // Surface it as a distinct, prefixed error so the UI can tell the two
+    // apart instead of implying the delivery update itself failed.
+    if (receiveError) return { error: `Order marked delivered, but inventory receipt failed: ${receiveError}` };
   }
 
   return { error: null };
 }
 
 /**
- * Turns a delivered order's line items into batch rows in the buyer branch's
- * inventory. Runs on the service client since it writes across accounts.
- * Cost price comes from what the pharmacy actually paid the supplier; sale
- * price falls back to a standard markup when the shared product catalogue
- * has no default; expiry falls back to a conservative 18 months when the
- * catalogue has no default — the pharmacist should still verify the real
- * expiry printed on the physical stock and correct it if needed.
+ * Turns a delivered order's line items into real stock: one `batches` row
+ * per line, in the buyer's branch, tagged to the master product via
+ * `order_line_items.product_id` (set at checkout — see
+ * /api/marketplace/checkout/route.ts).
+ *
+ * Known gap: the marketplace doesn't collect a per-batch expiry date
+ * anywhere in the order flow, so `expiry_date` is left NULL here. The
+ * pharmacy still needs to open the batch in the desktop POS and set the
+ * real expiry off the physical packaging before it's dispensable — this
+ * only gets the stock quantity and cost basis into inventory automatically,
+ * not the full batch record.
+ *
+ * Lines with no product_id (orders placed before this feature existed) are
+ * skipped, not silently dropped as zero-quantity stock.
  */
-async function receiveOrderIntoInventory(
-  orderId: string,
-  buyerBranchId: string,
-  orderReference: string
-): Promise<string | null> {
+async function receiveOrderIntoInventory(orderId: string): Promise<string | null> {
   const service = await createServiceClient();
 
-  const { data: lineItems, error: lineItemsError } = await service
+  const { data: order } = await service
+    .from("orders")
+    .select("id, buyer_branch_id")
+    .eq("id", orderId)
+    .single();
+  if (!order) return "Order not found.";
+
+  const { data: lines, error: linesError } = await service
     .from("order_line_items")
     .select("product_id, quantity, unit_price")
     .eq("order_id", orderId);
-  if (lineItemsError) return lineItemsError.message;
-  if (!lineItems || lineItems.length === 0) return null;
+  if (linesError) return linesError.message;
 
-  const productIds = [...new Set(lineItems.map((li) => li.product_id))];
-  const { data: products, error: productsError } = await service
-    .from("products")
-    .select("id, default_sale_price, default_expiry")
-    .in("id", productIds);
-  if (productsError) return productsError.message;
+  const receivable = (lines ?? []).filter((l) => l.product_id);
+  if (receivable.length === 0) return null;
 
-  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
-  const DEFAULT_MARKUP = 1.25;
-  const DEFAULT_SHELF_LIFE_MONTHS = 18;
-
-  const parseShelfLifeMonths = (raw: string | null | undefined): number => {
-    if (!raw) return DEFAULT_SHELF_LIFE_MONTHS;
-    const match = raw.match(/(\d+)\s*(month|mo|year|yr)/i);
-    if (!match) return DEFAULT_SHELF_LIFE_MONTHS;
-    const value = parseInt(match[1], 10);
-    const unit = match[2].toLowerCase();
-    return unit.startsWith("y") ? value * 12 : value;
-  };
-
-  const now = new Date();
-  const batchRows = lineItems.map((li) => {
-    const product = productMap.get(li.product_id);
-    const expiry = new Date(now);
-    expiry.setMonth(expiry.getMonth() + parseShelfLifeMonths(product?.default_expiry));
-    const costPrice = Number(li.unit_price);
-    const salePrice = product?.default_sale_price ? Number(product.default_sale_price) : costPrice * DEFAULT_MARKUP;
-    return {
-      branch_id: buyerBranchId,
-      product_id: li.product_id,
-      quantity: li.quantity,
-      cost_price: costPrice,
-      sale_price: salePrice,
-      expiry_date: expiry.toISOString().slice(0, 10),
-      batch_number: `MKT-${orderReference}`,
-    };
-  });
+  const batchRows = receivable.map((line) => ({
+    id: crypto.randomUUID(),
+    branch_id: order.buyer_branch_id,
+    product_id: line.product_id,
+    quantity: line.quantity,
+    cost_price: Number(line.unit_price),
+    sale_price: Number(line.unit_price),
+    expiry_date: null,
+    sync_version: 1,
+    updated_at: new Date().toISOString(),
+  }));
 
   const { error: insertError } = await service.from("batches").insert(batchRows);
-  return insertError?.message ?? null;
+  return insertError ? insertError.message : null;
+}
+
+/**
+ * Supplier approves a pending order, unlocking payment for the pharmacy.
+ * This does NOT charge anyone and does NOT change `orders.status` — it only
+ * sets `supplier_approved_at`, which /api/marketplace/pay-order checks
+ * before it will initiate a Payme collection. `status` moves to `confirmed`
+ * only once that payment actually completes (via the Payme webhook).
+ *
+ * Idempotent: re-approving an already-approved order is a no-op success,
+ * not an error, so a double-click can't fail loudly.
+ */
+export async function approveOrderForPayment(orderId: string): Promise<{ error: string | null }> {
+  const { supabase, account, error } = await requireSupplier();
+  if (error || !account) return { error: error ?? "Account not found." };
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status, supplier_approved_at")
+    .eq("id", orderId)
+    .eq("seller_id", account.id)
+    .maybeSingle();
+  if (!order) return { error: "Order not found." };
+  if (order.status !== "pending") {
+    return { error: `Cannot approve an order that is already "${order.status}".` };
+  }
+  if (order.supplier_approved_at) return { error: null };
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ supplier_approved_at: new Date().toISOString() })
+    .eq("id", orderId)
+    .eq("seller_id", account.id);
+
+  return { error: updateError ? updateError.message : null };
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

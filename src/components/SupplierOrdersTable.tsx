@@ -14,7 +14,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { updateOrderStatus } from "@/lib/actions/supplier";
+import { updateOrderStatus, approveOrderForPayment } from "@/lib/actions/supplier";
 
 /** A single inbound purchase order from a pharmacy branch. */
 export interface SupplierOrder {
@@ -29,7 +29,9 @@ export interface SupplierOrder {
   currency: string;
   /** ISO date string of when the order was placed. */
   placedAt: string;
-  status: "pending" | "approved" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  /** Set once this supplier has approved the order — unlocks payment for the pharmacy. Doesn't change `status`. */
+  supplierApprovedAt: string | null;
 }
 
 /** Always derive the order total from its line items to guarantee consistency. */
@@ -46,7 +48,6 @@ type StatusFilter = "all" | SupplierOrder["status"];
 function StatusBadge({ status }: { status: SupplierOrder["status"] }) {
   const styles: Record<SupplierOrder["status"], string> = {
     pending: "border-[#b45309] text-[#b45309] bg-[#fef3c7]",
-    approved: "border-[#7c3aed] text-[#7c3aed] bg-[#f3e8ff]",
     confirmed: "border-primary-container text-primary-container bg-surface-container",
     shipped: "border-[#0891b2] text-[#0891b2] bg-[#ecfeff]",
     delivered: "border-tertiary-container text-tertiary bg-[#dcfce7]",
@@ -54,7 +55,6 @@ function StatusBadge({ status }: { status: SupplierOrder["status"] }) {
   };
   const dots: Record<SupplierOrder["status"], string> = {
     pending: "bg-[#b45309]",
-    approved: "bg-[#7c3aed]",
     confirmed: "bg-primary-container",
     shipped: "bg-[#0891b2]",
     delivered: "bg-tertiary-container",
@@ -96,8 +96,26 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
     });
   }
 
+  const [approving, setApproving] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  function approveOrder(id: string) {
+    setApproveError(null);
+    setApproving(id);
+    void approveOrderForPayment(id).then((result) => {
+      setApproving(null);
+      if (result.error) {
+        setApproveError(result.error);
+        return;
+      }
+      setLocalOrders((prev) =>
+        prev.map((o) => (o.id === id ? { ...o, supplierApprovedAt: new Date().toISOString() } : o))
+      );
+    });
+  }
+
   const statusCounts = useMemo(() => {
-    const c: Record<string, number> = { pending: 0, approved: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
+    const c: Record<string, number> = { pending: 0, confirmed: 0, shipped: 0, delivered: 0, cancelled: 0 };
     localOrders.forEach((o) => { c[o.status]++; });
     return c;
   }, [localOrders]);
@@ -106,10 +124,13 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
     .filter((o) => o.status === "delivered")
     .reduce((s, o) => s + orderTotal(o), 0);
 
-  const STATUSES: SupplierOrder["status"][] = ["pending", "approved", "confirmed", "shipped", "delivered", "cancelled"];
+  const STATUSES: SupplierOrder["status"][] = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
 
   return (
     <div className="flex-1 p-8 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
+      {approveError && (
+        <div className="p-3 bg-error-container border border-error text-error text-sm">{approveError}</div>
+      )}
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div className="bg-surface-container-lowest border border-outline-variant p-4 relative">
@@ -217,18 +238,27 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                      {order.status === "pending" && (
+                      {order.status === "pending" && !order.supplierApprovedAt && (
                         <button
-                          onClick={() => updateStatus(order.id, "approved")}
-                          className="font-mono text-label-md text-[#7c3aed] border border-[#7c3aed] px-2 py-1 hover:bg-[#f3e8ff] transition-colors uppercase"
+                          onClick={() => approveOrder(order.id)}
+                          disabled={approving === order.id}
+                          className="font-mono text-label-md text-primary-container border border-primary-container px-2 py-1 hover:bg-surface-container-high transition-colors uppercase disabled:opacity-60"
                         >
-                          Approve
+                          {approving === order.id ? "Approving…" : "Approve"}
                         </button>
                       )}
-                      {order.status === "approved" && (
+                      {order.status === "pending" && order.supplierApprovedAt && (
                         <span className="font-mono text-label-md text-on-surface-variant px-2 py-1 uppercase">
                           Awaiting payment
                         </span>
+                      )}
+                      {order.status === "pending" && (
+                        <button
+                          onClick={() => updateStatus(order.id, "cancelled")}
+                          className="font-mono text-label-md text-error border border-error px-2 py-1 hover:bg-error-container transition-colors uppercase"
+                        >
+                          Reject
+                        </button>
                       )}
                       {order.status === "confirmed" && (
                         <button

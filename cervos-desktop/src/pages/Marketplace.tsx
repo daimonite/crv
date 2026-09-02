@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
 
@@ -161,23 +161,23 @@ export default function Marketplace() {
         stock_qty: number
         lead_time_days: number
         pack_size: string | null
-        products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null
-        accounts: { id: string; name: string; verified: boolean }[] | null
+        products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null
+        accounts: { id: string; name: string; verified: boolean } | null
       }
 
       const mapped: MarketplaceProduct[] = ((data ?? []) as unknown as Row[]).map((row) => ({
         id: row.id,
         supplierId: row.supplier_id,
-        supplierName: row.accounts?.[0]?.name ?? 'Supplier',
-        productName: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? 'Unnamed product',
-        genericName: row.products?.[0]?.generic_name ?? '',
-        category: row.products?.[0]?.category ?? 'Other',
+        supplierName: row.accounts?.name ?? 'Supplier',
+        productName: row.products?.brand_name ?? row.products?.generic_name ?? 'Unnamed product',
+        genericName: row.products?.generic_name ?? '',
+        category: row.products?.category ?? 'Other',
         packSize: row.pack_size ?? '',
         unitPrice: Number(row.price),
         currency: row.currency ?? 'TZS',
         minOrderQty: row.min_order_qty ?? 1,
         stockAvailable: row.stock_qty ?? 0,
-        verified: row.accounts?.[0]?.verified ?? false,
+        verified: row.accounts?.verified ?? false,
       }))
       setProducts(mapped)
     } catch (e) {
@@ -245,23 +245,14 @@ export default function Marketplace() {
       return
     }
 
-    const msisdn = walletMsisdn.trim()
-    if (!msisdn) {
-      const entered = window.prompt('Enter your Payme Africa wallet phone number (e.g. +2557...). It will be saved for next time:')
-      if (!entered?.trim()) {
-        alert('Order not placed — Payme wallet number is required for escrow payment.')
-        return
-      }
-      setWalletMsisdn(entered.trim())
-      await queryDb(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ['payme_wallet_number', JSON.stringify(entered.trim())]
-      )
-    }
-
+    // Wallet number isn't required to place an order anymore — checkout no
+    // longer charges anything. It's only needed later, once the supplier
+    // approves, when the pharmacy actually pays (see OrdersTable "Pay").
+    // Still prefilled here if already saved, purely so the order carries a
+    // sensible default for that later step.
     setPlacing(true)
     try {
-      const finalMsisdn = (msisdn || walletMsisdn).trim() || (await (async () => {
+      const finalMsisdn = walletMsisdn.trim() || (await (async () => {
         const r = await queryDb("SELECT value FROM app_settings WHERE key = 'payme_wallet_number'")
         return r.length ? JSON.parse(r[0].value) as string : ''
       })())
@@ -276,29 +267,18 @@ export default function Marketplace() {
           buyerBranchId: branchId,
           items: cart.map((c) => ({ catalogId: c.product.id, quantity: c.quantity })),
           msisdn: finalMsisdn,
-          idempotencyKey: `${branchId}-${Date.now()}`,
         }),
       })
 
-      const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; total?: number; payment?: { status: string; error?: string; message?: string; reference?: string } }
+      const json = await res.json() as { error?: string; orderId?: string; orderRef?: string; total?: number; message?: string }
 
       if (!res.ok) {
         throw new Error(json.error || `Checkout failed (${res.status})`)
       }
 
-      const paymentMsg = json.payment
-        ? json.payment.status === 'completed'
-          ? 'Payment completed.'
-          : json.payment.status === 'pending'
-            ? (json.payment.message ?? 'Payment initiated — check your phone for the mobile money prompt.')
-            : json.payment.error
-              ? `Payment failed: ${json.payment.error}`
-              : ''
-        : ''
-
       setCart([])
       setShowCart(false)
-      alert(`Order ${json.orderRef ?? json.orderId} placed. Total TZS ${Number(json.total ?? getCartTotal()).toLocaleString()}. ${paymentMsg}`.trim())
+      alert(`Order ${json.orderRef ?? json.orderId} sent. Total TZS ${Number(json.total ?? getCartTotal()).toLocaleString()}. ${json.message ?? 'Waiting on the supplier to approve it before payment.'}`.trim())
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to place order')
     } finally {

@@ -334,15 +334,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                   </div>
                 )}
 
-                {selectedOrder.status === "pending" && (
-                  <div className="border-t border-outline-variant pt-4">
-                    <p className="text-sm text-on-surface-variant">
-                      Waiting for the supplier to review and approve this order. You'll be able to pay once it's approved.
-                    </p>
-                  </div>
-                )}
-
-                {selectedOrder.status === "approved" && (
+                {selectedOrder.status === "pending" && selectedOrder.supplier_approved_at && (
                   <div className="border-t border-outline-variant pt-4">
                     <p className="font-label-md text-on-surface-variant text-xs uppercase tracking-wider mb-2">
                       Pay order via mobile money
@@ -369,6 +361,14 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                     </div>
                     {payError && <p className="mt-2 text-xs text-error">{payError}</p>}
                     {payMessage && <p className="mt-2 text-xs text-success">{payMessage}</p>}
+                  </div>
+                )}
+                {selectedOrder.status === "pending" && !selectedOrder.supplier_approved_at && (
+                  <div className="border-t border-outline-variant pt-4">
+                    <p className="text-sm text-on-surface-variant flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px]">hourglass_top</span>
+                      Waiting on the supplier to approve this order before you can pay.
+                    </p>
                   </div>
                 )}
 
