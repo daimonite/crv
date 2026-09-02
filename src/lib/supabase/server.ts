@@ -173,7 +173,7 @@ export async function createAdminClient(): Promise<SupabaseServerClient> {
     const cookieStore = await cookies();
     return mockServerClient(cookieStore) as unknown as SupabaseServerClient;
   }
-  return createSupabaseJsClient(
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }

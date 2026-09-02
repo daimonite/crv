@@ -318,8 +318,8 @@ export const strings: Record<string, Record<Lang, string>> = {
   "mkt.quote.total":   { EN: "Estimated Total", SW: "Jumla ya Makadirio" },
   "mkt.quote.submit":  { EN: "Submit Quote Request", SW: "Wasilisha Ombi la Nukuu" },
   "mkt.checkout.branch_label": { EN: "Ordering branch", SW: "Tawi linaloagiza" },
-  "mkt.checkout.wallet_label": { EN: "Payme wallet (charged on order)", SW: "Mkoba wa Payme (itakayotozwa)" },
-  "mkt.checkout.escrow_note": { EN: "Payment held in escrow via Payme Africa until delivery.", SW: "Malipo yatawekwa kwenye escrow kupitia Payme Africa hadi uwasilishaji." },
+  "mkt.checkout.wallet_label": { EN: "Payme wallet (used once the supplier approves)", SW: "Mkoba wa Payme (utatumika baada ya muuzaji kuidhinisha)" },
+  "mkt.checkout.escrow_note": { EN: "You'll pay via Payme Africa only after the supplier approves this order — nothing is charged now.", SW: "Utalipa kupitia Payme Africa baada tu ya muuzaji kuidhinisha agizo hili — hakuna malipo sasa." },
   "mkt.checkout.place_order": { EN: "Place Order & Pay", SW: "Weka Oda na Lipa" },
 
   // Payment settings form (shared pharmacy + supplier)
