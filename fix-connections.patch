@@ -1,0 +1,49 @@
+diff --git a/src/app/api/marketplace/connections/route.ts b/src/app/api/marketplace/connections/route.ts
+index afdbc63..5923f13 100644
+--- a/src/app/api/marketplace/connections/route.ts
++++ b/src/app/api/marketplace/connections/route.ts
+@@ -199,7 +199,7 @@ export async function PATCH(request: NextRequest) {
+     .single();
+   if (!conn) return NextResponse.json({ error: "Connection request not found." }, { status: 404 });
+ 
+-  const branchAccountId = (conn as unknown as { branches: { account_id: string }[] | null }).branches?.[0]?.account_id;
++  const branchAccountId = (conn as unknown as { branches: { account_id: string } | null }).branches?.account_id;
+   if (branchAccountId !== account.id) {
+     return NextResponse.json({ error: "Only the branch's own account can approve or reject this request." }, { status: 403 });
+   }
+diff --git a/src/app/dashboard/network/page.tsx b/src/app/dashboard/network/page.tsx
+index 2e06c1e..4e8e9ab 100644
+--- a/src/app/dashboard/network/page.tsx
++++ b/src/app/dashboard/network/page.tsx
+@@ -48,8 +48,8 @@ export default async function NetworkPage() {
+     status: string;
+     requested_at: string;
+     decided_at: string | null;
+-    accounts: { name: string }[] | null;
+-    branches: { name: string }[] | null;
++    accounts: { name: string } | null;
++    branches: { name: string } | null;
+   };
+ 
+   // Fetch connections with joined supplier and branch names in a single query
+@@ -68,7 +68,7 @@ export default async function NetworkPage() {
+     ...new Map(
+       connectionList
+         .filter((c) => c.status === "approved")
+-        .map((c) => [c.supplier_id, c.accounts?.[0]?.name ?? "Supplier"] as const)
++        .map((c) => [c.supplier_id, c.accounts?.name ?? "Supplier"] as const)
+     ).entries(),
+   ];
+ 
+@@ -92,9 +92,9 @@ export default async function NetworkPage() {
+     .map((c) => ({
+       id: c.id,
+       supplierId: c.supplier_id,
+-      supplierName: c.accounts?.[0]?.name ?? "Unknown supplier",
++      supplierName: c.accounts?.name ?? "Unknown supplier",
+       branchId: c.branch_id,
+-      branchName: c.branches?.[0]?.name ?? "Unknown branch",
++      branchName: c.branches?.name ?? "Unknown branch",
+       status: c.status as "pending" | "approved" | "rejected",
+       requestedAt: c.requested_at,
+     }));

@@ -48,8 +48,8 @@ export default async function NetworkPage() {
     status: string;
     requested_at: string;
     decided_at: string | null;
-    accounts: { name: string }[] | null;
-    branches: { name: string }[] | null;
+    accounts: { name: string } | null;
+    branches: { name: string } | null;
   };
 
   // Fetch connections with joined supplier and branch names in a single query
@@ -68,7 +68,7 @@ export default async function NetworkPage() {
     ...new Map(
       connectionList
         .filter((c) => c.status === "approved")
-        .map((c) => [c.supplier_id, c.accounts?.[0]?.name ?? "Supplier"] as const)
+        .map((c) => [c.supplier_id, c.accounts?.name ?? "Supplier"] as const)
     ).entries(),
   ];
 
@@ -92,9 +92,9 @@ export default async function NetworkPage() {
     .map((c) => ({
       id: c.id,
       supplierId: c.supplier_id,
-      supplierName: c.accounts?.[0]?.name ?? "Unknown supplier",
+      supplierName: c.accounts?.name ?? "Unknown supplier",
       branchId: c.branch_id,
-      branchName: c.branches?.[0]?.name ?? "Unknown branch",
+      branchName: c.branches?.name ?? "Unknown branch",
       status: c.status as "pending" | "approved" | "rejected",
       requestedAt: c.requested_at,
     }));

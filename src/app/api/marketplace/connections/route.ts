@@ -199,7 +199,7 @@ export async function PATCH(request: NextRequest) {
     .single();
   if (!conn) return NextResponse.json({ error: "Connection request not found." }, { status: 404 });
 
-  const branchAccountId = (conn as unknown as { branches: { account_id: string }[] | null }).branches?.[0]?.account_id;
+  const branchAccountId = (conn as unknown as { branches: { account_id: string } | null }).branches?.account_id;
   if (branchAccountId !== account.id) {
     return NextResponse.json({ error: "Only the branch's own account can approve or reject this request." }, { status: 403 });
   }
