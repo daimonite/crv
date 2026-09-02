@@ -27,7 +27,7 @@ export default async function BillingPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("id, name, subscription_plan, subscription_status, billing_status, subscription_expires_at")
+    .select("id, name, subscription_plan, subscription_status, billing_status, subscription_expires_at, trial_ends_at")
     .eq("auth_user_id", user.id)
     .single();
 

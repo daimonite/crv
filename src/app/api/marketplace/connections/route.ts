@@ -34,14 +34,14 @@ export async function GET(request: NextRequest) {
       status: string;
       requested_at: string;
       decided_at: string | null;
-      branches: { name: string; accounts: { name: string }[] | null }[] | null;
+      branches: { name: string; accounts: { name: string } | null } | null;
     }[];
     return NextResponse.json({
       connections: rows.map((r) => ({
         id: r.id,
         branchId: r.branch_id,
-        branchName: r.branches?.[0]?.name ?? "Branch",
-        pharmacyName: r.branches?.[0]?.accounts?.[0]?.name ?? "",
+        branchName: r.branches?.name ?? "Branch",
+        pharmacyName: r.branches?.accounts?.name ?? "",
         status: r.status,
         requestedAt: r.requested_at,
         decidedAt: r.decided_at,
@@ -62,10 +62,10 @@ export async function GET(request: NextRequest) {
     .eq("branch_id", branchId)
     .order("requested_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const rows = (data ?? []) as unknown as { id: string; supplier_id: string; status: string; requested_at: string; decided_at: string | null; accounts: { name: string }[] | null }[];
+  const rows = (data ?? []) as unknown as { id: string; supplier_id: string; status: string; requested_at: string; decided_at: string | null; accounts: { name: string } | null }[];
   return NextResponse.json({
     connections: rows.map((r) => ({
-      id: r.id, supplierId: r.supplier_id, supplierName: r.accounts?.[0]?.name ?? "Supplier",
+      id: r.id, supplierId: r.supplier_id, supplierName: r.accounts?.name ?? "Supplier",
       status: r.status, requestedAt: r.requested_at, decidedAt: r.decided_at,
     })),
   });
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   // Seller subscription gate: an approved connection requires an active plan.
   const { data: acct } = await service
     .from("accounts")
-    .select("id, subscription_status, subscription_expires_at, subscription_plan")
+    .select("id, subscription_status, subscription_expires_at, subscription_plan, trial_ends_at")
     .eq("id", account.id)
     .single();
   const active = isSubscribedActive(acct ?? {});
@@ -208,7 +208,7 @@ export async function PATCH(request: NextRequest) {
     // Pharmacy subscription gate + connected-supplier cap from their pharmacy plan.
     const { data: acct } = await service
       .from("accounts")
-      .select("id, subscription_status, subscription_expires_at, subscription_plan")
+      .select("id, subscription_status, subscription_expires_at, subscription_plan, trial_ends_at")
       .eq("id", account.id)
       .single();
     const active = isSubscribedActive(acct ?? {});

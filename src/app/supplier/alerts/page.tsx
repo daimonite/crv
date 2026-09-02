@@ -42,7 +42,7 @@ export default async function SupplierAlertsPage() {
     stock_qty: number;
     min_order_qty: number;
     lead_time_days: number | null;
-    products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
+    products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null;
   };
 
   const { data } = await supabase
@@ -56,9 +56,9 @@ export default async function SupplierAlertsPage() {
     .filter(row => row.stock_qty < row.min_order_qty)
     .map(row => ({
       id: row.id,
-      productName: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Unnamed product",
+      productName: row.products?.brand_name ?? row.products?.generic_name ?? "Unnamed product",
       sku: row.sku,
-      category: row.products?.[0]?.category ?? "Other",
+      category: row.products?.category ?? "Other",
       stockQty: row.stock_qty,
       minOrderQty: row.min_order_qty,
       leadTimeDays: row.lead_time_days ?? 0,

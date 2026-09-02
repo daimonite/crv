@@ -45,7 +45,7 @@ export default async function SupplierStorefrontPage() {
     min_order_qty: number;
     stock_qty: number;
     lead_time_days: number | null;
-    products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
+    products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null;
   };
 
   const [
@@ -67,9 +67,9 @@ export default async function SupplierStorefrontPage() {
 
   const products: StorefrontProduct[] = ((catalogData ?? []) as unknown as CatalogRow[]).map(row => ({
     id: row.id,
-    name: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Unnamed product",
-    genericName: row.products?.[0]?.generic_name ?? "",
-    category: row.products?.[0]?.category ?? "Other",
+    name: row.products?.brand_name ?? row.products?.generic_name ?? "Unnamed product",
+    genericName: row.products?.generic_name ?? "",
+    category: row.products?.category ?? "Other",
     packSize: row.pack_size,
     unitPrice: Number(row.price),
     currency: row.currency,

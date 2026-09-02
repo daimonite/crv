@@ -131,7 +131,7 @@ export async function getSupplierCatalog(): Promise<CatalogProduct[]> {
     stock_qty: number;
     min_order_qty: number;
     status: "active" | "archived" | "draft";
-    products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
+    products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null;
   };
 
   const { data } = await supabase
@@ -142,10 +142,10 @@ export async function getSupplierCatalog(): Promise<CatalogProduct[]> {
 
   return ((data ?? []) as unknown as CatalogRow[]).map((row) => ({
     id: row.id,
-    name: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Unnamed product",
-    genericName: row.products?.[0]?.generic_name ?? "",
+    name: row.products?.brand_name ?? row.products?.generic_name ?? "Unnamed product",
+    genericName: row.products?.generic_name ?? "",
     sku: row.sku ?? "",
-    category: row.products?.[0]?.category ?? "Other",
+    category: row.products?.category ?? "Other",
     packSize: row.pack_size ?? "",
     unitPrice: Number(row.price),
     currency: row.currency,
@@ -279,8 +279,8 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
     branches: {
       id: string;
       name: string;
-      accounts: { id: string; name: string }[] | null;
-    }[] | null;
+      accounts: { id: string; name: string } | null;
+    } | null;
     order_line_items: {
       product_name: string;
       quantity: number;
@@ -297,8 +297,8 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
   return ((orders ?? []) as unknown as OrderRow[]).map((o) => ({
     id: o.id,
     orderRef: o.order_reference,
-    pharmacyName: o.branches?.[0]?.accounts?.[0]?.name ?? "Pharmacy",
-    branchName: o.branches?.[0]?.name ?? "",
+    pharmacyName: o.branches?.accounts?.name ?? "Pharmacy",
+    branchName: o.branches?.name ?? "",
     currency: o.currency,
     placedAt: o.placed_at,
     status: o.status,
@@ -331,7 +331,7 @@ export async function updateOrderStatus(
 
   const { data: current } = await supabase
     .from("orders")
-    .select("status")
+    .select("status, buyer_branch_id, order_reference")
     .eq("id", id)
     .eq("seller_id", account.id)
     .maybeSingle();
@@ -363,7 +363,88 @@ export async function updateOrderStatus(
     .eq("seller_id", account.id);
 
   if (updateError) return { error: updateError.message };
+
+  // Delivery is the moment stock actually changes hands: land the order's
+  // line items into the buyer branch's inventory (batches) so marketplace
+  // orders show up as usable stock, not just a status on the Orders screen.
+  // This writes into another account's table, so it must go through the
+  // service client — the supplier's own RLS-scoped client has no access to
+  // a pharmacy branch's batches.
+  if (status === "delivered") {
+    const receiveError = await receiveOrderIntoInventory(id, current.buyer_branch_id, current.order_reference);
+    if (receiveError) {
+      // The order status change already succeeded; surface the inventory
+      // failure separately rather than rolling back a real delivery.
+      console.error(`[updateOrderStatus] failed to receive order ${id} into inventory:`, receiveError);
+    }
+  }
+
   return { error: null };
+}
+
+/**
+ * Turns a delivered order's line items into batch rows in the buyer branch's
+ * inventory. Runs on the service client since it writes across accounts.
+ * Cost price comes from what the pharmacy actually paid the supplier; sale
+ * price falls back to a standard markup when the shared product catalogue
+ * has no default; expiry falls back to a conservative 18 months when the
+ * catalogue has no default — the pharmacist should still verify the real
+ * expiry printed on the physical stock and correct it if needed.
+ */
+async function receiveOrderIntoInventory(
+  orderId: string,
+  buyerBranchId: string,
+  orderReference: string
+): Promise<string | null> {
+  const service = await createServiceClient();
+
+  const { data: lineItems, error: lineItemsError } = await service
+    .from("order_line_items")
+    .select("product_id, quantity, unit_price")
+    .eq("order_id", orderId);
+  if (lineItemsError) return lineItemsError.message;
+  if (!lineItems || lineItems.length === 0) return null;
+
+  const productIds = [...new Set(lineItems.map((li) => li.product_id))];
+  const { data: products, error: productsError } = await service
+    .from("products")
+    .select("id, default_sale_price, default_expiry")
+    .in("id", productIds);
+  if (productsError) return productsError.message;
+
+  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+  const DEFAULT_MARKUP = 1.25;
+  const DEFAULT_SHELF_LIFE_MONTHS = 18;
+
+  const parseShelfLifeMonths = (raw: string | null | undefined): number => {
+    if (!raw) return DEFAULT_SHELF_LIFE_MONTHS;
+    const match = raw.match(/(\d+)\s*(month|mo|year|yr)/i);
+    if (!match) return DEFAULT_SHELF_LIFE_MONTHS;
+    const value = parseInt(match[1], 10);
+    const unit = match[2].toLowerCase();
+    return unit.startsWith("y") ? value * 12 : value;
+  };
+
+  const now = new Date();
+  const batchRows = lineItems.map((li) => {
+    const product = productMap.get(li.product_id);
+    const expiry = new Date(now);
+    expiry.setMonth(expiry.getMonth() + parseShelfLifeMonths(product?.default_expiry));
+    const costPrice = Number(li.unit_price);
+    const salePrice = product?.default_sale_price ? Number(product.default_sale_price) : costPrice * DEFAULT_MARKUP;
+    return {
+      branch_id: buyerBranchId,
+      product_id: li.product_id,
+      quantity: li.quantity,
+      cost_price: costPrice,
+      sale_price: salePrice,
+      expiry_date: expiry.toISOString().slice(0, 10),
+      batch_number: `MKT-${orderReference}`,
+    };
+  });
+
+  const { error: insertError } = await service.from("batches").insert(batchRows);
+  return insertError?.message ?? null;
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -516,8 +597,8 @@ export async function getMarketplaceProducts(): Promise<MarketplaceProduct[]> {
     stock_qty: number;
     lead_time_days: number;
     pack_size: string | null;
-    products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
-    accounts: { id: string; name: string; verified: boolean }[] | null;
+    products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null;
+    accounts: { id: string; name: string; verified: boolean } | null;
   };
 
   const { data } = await supabase
@@ -529,17 +610,17 @@ export async function getMarketplaceProducts(): Promise<MarketplaceProduct[]> {
   return ((data ?? []) as unknown as MarketplaceRow[]).map((row) => ({
     id: row.id,
     supplierId: row.supplier_id,
-    supplierName: row.accounts?.[0]?.name ?? "Supplier",
-    productName: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Unnamed product",
-    genericName: row.products?.[0]?.generic_name ?? "",
-    category: row.products?.[0]?.category ?? "Other",
+    supplierName: row.accounts?.name ?? "Supplier",
+    productName: row.products?.brand_name ?? row.products?.generic_name ?? "Unnamed product",
+    genericName: row.products?.generic_name ?? "",
+    category: row.products?.category ?? "Other",
     packSize: row.pack_size ?? "",
     unitPrice: Number(row.price),
     currency: row.currency,
     minOrderQty: row.min_order_qty,
     stockAvailable: row.stock_qty,
     leadTimeDays: row.lead_time_days,
-    verified: row.accounts?.[0]?.verified ?? false,
+    verified: row.accounts?.verified ?? false,
   }));
 }
 

@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
     stock_qty: number;
     lead_time_days: number;
     pack_size: string | null;
-    products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
-    accounts: { id: string; name: string; verified: boolean }[] | null;
+    products: { id: string; generic_name: string; brand_name: string | null; category: string | null } | null;
+    accounts: { id: string; name: string; verified: boolean } | null;
   };
 
   const { data, error } = await supabase
@@ -63,17 +63,17 @@ export async function GET(request: NextRequest) {
   const products = ((data ?? []) as unknown as Row[]).map((row) => ({
     id: row.id,
     supplierId: row.supplier_id,
-    supplierName: row.accounts?.[0]?.name ?? "Supplier",
-    productName: row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Unnamed product",
-    genericName: row.products?.[0]?.generic_name ?? "",
-    category: row.products?.[0]?.category ?? "Other",
+    supplierName: row.accounts?.name ?? "Supplier",
+    productName: row.products?.brand_name ?? row.products?.generic_name ?? "Unnamed product",
+    genericName: row.products?.generic_name ?? "",
+    category: row.products?.category ?? "Other",
     packSize: row.pack_size ?? "",
     unitPrice: Number(row.price),
     currency: row.currency,
     minOrderQty: row.min_order_qty,
     stockAvailable: row.stock_qty,
     leadTimeDays: row.lead_time_days,
-    verified: row.accounts?.[0]?.verified ?? false,
+    verified: row.accounts?.verified ?? false,
   }));
 
   return NextResponse.json({ products });

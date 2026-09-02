@@ -175,7 +175,7 @@ export async function getBranchInventory(): Promise<BatchRow[]> {
     cost_price: number | null;
     sale_price: number | null;
     expiry_date: string | null;
-    products: { generic_name: string; brand_name: string | null }[] | null;
+    products: { generic_name: string; brand_name: string | null } | null;
   }>).map((row) => ({
     id: row.id,
     product_id: row.product_id,
@@ -183,8 +183,8 @@ export async function getBranchInventory(): Promise<BatchRow[]> {
     cost_price: Number(row.cost_price) || null,
     sale_price: Number(row.sale_price) || null,
     expiry_date: row.expiry_date,
-    product_generic: row.products?.[0]?.generic_name ?? null,
-    product_brand: row.products?.[0]?.brand_name ?? null,
+    product_generic: row.products?.generic_name ?? null,
+    product_brand: row.products?.brand_name ?? null,
   }));
 }
 
@@ -314,13 +314,13 @@ export async function getBranchTransactions(): Promise<BranchTransaction[]> {
     status: string;
     reference: string;
     created_at: string;
-    orders: { order_reference: string }[] | null;
+    orders: { order_reference: string } | null;
   }>) {
     if (pay.status === "completed" || pay.status === "pending") {
       transactions.push({
         id: `pay-${pay.id}`,
         kind: "order_payment",
-        description: `Marketplace payment — ${pay.orders?.[0]?.order_reference ?? pay.reference}`,
+        description: `Marketplace payment — ${pay.orders?.order_reference ?? pay.reference}`,
         amount: Number(pay.amount_tzs),
         operator_name: null,
         created_at: pay.created_at,

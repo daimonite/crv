@@ -65,9 +65,18 @@ export async function savePaymentSettingsWallet(accountId: string, wallet: strin
 export function isSubscribedActive(account: {
   subscription_status?: string | null;
   subscription_expires_at?: string | null;
+  trial_ends_at?: string | null;
 }): boolean {
   const status = account.subscription_status;
-  if (status === "active" || status === "trial") return true;
+  // A "trial" status only counts as active while trial_ends_at is still in
+  // the future. Previously this returned true for any trial row regardless
+  // of date, so an expired trial (no trial_ends_at check) stayed active
+  // forever until someone manually changed the status.
+  if (status === "trial") {
+    if (!account.trial_ends_at) return true; // no expiry set — treat as still active
+    return new Date(account.trial_ends_at).getTime() > Date.now();
+  }
+  if (status === "active") return true;
   if (account.subscription_expires_at) {
     const expiry = new Date(account.subscription_expires_at).getTime();
     if (expiry > Date.now()) return true;

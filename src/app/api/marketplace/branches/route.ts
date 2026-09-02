@@ -32,8 +32,8 @@ export async function GET(request: NextRequest) {
     .limit(20);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const rows = (data ?? []) as unknown as { id: string; name: string; accounts: { name: string }[] | null }[];
+  const rows = (data ?? []) as unknown as { id: string; name: string; accounts: { name: string } | null }[];
   return NextResponse.json({
-    branches: rows.map((r) => ({ id: r.id, name: r.name, pharmacyName: r.accounts?.[0]?.name ?? "" })),
+    branches: rows.map((r) => ({ id: r.id, name: r.name, pharmacyName: r.accounts?.name ?? "" })),
   });
 }

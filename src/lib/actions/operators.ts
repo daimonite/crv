@@ -149,7 +149,7 @@ export async function getOperators(accountId: string): Promise<Operator[]> {
     .in("branch_id", branchIds)
     .order("name");
 
-  return ((data ?? []) as unknown as (Operator & { branches: { name: string }[] | null })[]).map((row) => ({
+  return ((data ?? []) as unknown as (Operator & { branches: { name: string } | null })[]).map((row) => ({
     id: row.id,
     name: row.name,
     pin_hash: row.pin_hash,
@@ -159,7 +159,7 @@ export async function getOperators(accountId: string): Promise<Operator[]> {
     email: row.email ?? null,
     web_enabled: row.web_enabled ?? false,
     created_at: row.created_at,
-    branch_name: row.branches?.[0]?.name ?? "Unknown",
+    branch_name: row.branches?.name ?? "Unknown",
   }));
 }
 
@@ -225,7 +225,7 @@ export async function createOperator(
     return { error: error.message };
   }
 
-  const row = created as unknown as (Operator & { branches: { name: string }[] | null }) | null;
+  const row = created as unknown as (Operator & { branches: { name: string } | null }) | null;
   const operator: Operator | undefined = row
     ? {
         id: row.id,
@@ -237,7 +237,7 @@ export async function createOperator(
         email: row.email ?? null,
         web_enabled: row.web_enabled ?? false,
         created_at: row.created_at,
-        branch_name: row.branches?.[0]?.name ?? "Unknown",
+        branch_name: row.branches?.name ?? "Unknown",
       }
     : undefined;
 
@@ -328,7 +328,7 @@ export async function updateOperator(
 
   if (error) return { error: error.message };
 
-  const row = updated as unknown as (Operator & { branches: { name: string }[] | null }) | null;
+  const row = updated as unknown as (Operator & { branches: { name: string } | null }) | null;
   const operator: Operator | undefined = row
     ? {
         id: row.id,
@@ -340,7 +340,7 @@ export async function updateOperator(
         email: row.email ?? null,
         web_enabled: row.web_enabled ?? false,
         created_at: row.created_at,
-        branch_name: row.branches?.[0]?.name ?? "Unknown",
+        branch_name: row.branches?.name ?? "Unknown",
       }
     : undefined;
 
@@ -366,8 +366,13 @@ export async function deleteOperator(
 
   await deleteAuthUser(op.auth_user_id);
 
-  const { error } = await supabase.from("operators").delete().eq("id", id);
+  // .delete() alone doesn't error when RLS blocks it — it just matches 0 rows
+  // and returns success. Chaining .select() forces Postgres to return the
+  // rows it actually deleted, so a silent no-op (e.g. a missing RLS policy)
+  // surfaces as a real error instead of the row quietly surviving.
+  const { data: deleted, error } = await supabase.from("operators").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!deleted || deleted.length === 0) return { error: "Delete was blocked (no rows removed) — check permissions." };
   return { error: null };
 }
 

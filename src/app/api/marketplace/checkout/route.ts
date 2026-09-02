@@ -119,14 +119,14 @@ export async function POST(request: NextRequest) {
   const lineItems: { catalogId: string; quantity: number; unitPrice: number; productName: string }[] = [];
 
   for (const item of items) {
-    const row = priceMap.get(item.catalogId) as unknown as { price: number; min_order_qty: number; products: { generic_name: string; brand_name: string | null }[] | null } | undefined;
+    const row = priceMap.get(item.catalogId) as unknown as { price: number; min_order_qty: number; products: { generic_name: string; brand_name: string | null } | null } | undefined;
     if (!row) return NextResponse.json({ error: `Catalog item ${item.catalogId} not found` }, { status: 400 });
     if (item.quantity < row.min_order_qty) {
       return NextResponse.json({ error: `Quantity for ${item.catalogId} below minimum ${row.min_order_qty}` }, { status: 400 });
     }
     const unitPrice = Number(row.price);
     total += unitPrice * item.quantity;
-    const productName = row.products?.[0]?.brand_name ?? row.products?.[0]?.generic_name ?? "Product";
+    const productName = row.products?.brand_name ?? row.products?.generic_name ?? "Product";
     lineItems.push({ catalogId: item.catalogId, quantity: item.quantity, unitPrice, productName });
   }
 
