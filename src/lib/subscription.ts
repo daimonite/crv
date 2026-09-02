@@ -174,6 +174,10 @@ export async function createSubscriptionCheckout(args: {
     })
     .eq("reference", reference);
 
+  if (completed) {
+    await activateSubscription({ service, reference });
+  }
+
   return {
     reference,
     message: completed
@@ -246,7 +250,7 @@ export async function activateSubscription(args: {
     .from("accounts")
     .update({
       subscription_status: "active",
-      subscription_plan: plan?.id ?? null,
+      subscription_plan: subPayment.plan_id ?? plan?.id ?? null,
       subscription_started_at: account?.subscription_started_at ?? new Date().toISOString(),
       subscription_expires_at: newExpires.toISOString(),
       grace_ends_at: null,

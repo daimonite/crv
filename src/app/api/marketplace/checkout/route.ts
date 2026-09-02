@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: connection?.status === "pending"
-          ? "Connection request to this supplier is still pending approval."
-          : "This branch isn't connected to this supplier yet. Ask the supplier to send a connection request, then approve it from Marketplace > Connection Requests.",
+          ? "Connection request to this supplier is pending approval. Approve it in Network Map."
+          : "This branch isn't connected to this supplier yet. In the supplier portal, go to Connections and send a request to this branch, then approve it under Network Map.",
         code: "CONNECTION_REQUIRED",
       },
       { status: 403 }

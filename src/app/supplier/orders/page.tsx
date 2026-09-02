@@ -19,11 +19,17 @@ export default async function SupplierOrdersPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth?next=/supplier/orders");
 
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("name, type, subscription_status, subscription_expires_at, trial_ends_at")
-    .eq("auth_user_id", user.id)
-    .single();
+  const [
+    { data: account },
+    orders,
+  ] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("name, type, subscription_status, subscription_expires_at, trial_ends_at")
+      .eq("auth_user_id", user.id)
+      .single(),
+    getSupplierOrders(),
+  ]);
 
   // Enforce supplier-only access
   if (account?.type !== "supplier") redirect("/dashboard");
@@ -31,7 +37,6 @@ export default async function SupplierOrdersPage() {
   // Subscription paywall: orders are gated behind an active supplier plan.
   if (!isSubscribedActive(account)) redirect("/supplier/subscription");
 
-  const orders = await getSupplierOrders();
   const pendingCount = orders.filter((o) => o.status === "pending").length;
 
   return (

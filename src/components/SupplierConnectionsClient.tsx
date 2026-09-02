@@ -12,6 +12,7 @@ interface ConnectionRow {
   id: string;
   branchId: string;
   branchName: string;
+  pharmacyName: string;
   status: "pending" | "approved" | "rejected";
   requestedAt: string;
   decidedAt: string | null;
@@ -148,7 +149,12 @@ export default function SupplierConnectionsClient() {
             <tbody>
               {connections.map((c) => (
                 <tr key={c.id} className="border-t border-outline-variant">
-                  <td className="px-4 py-3 text-sm font-medium">{c.branchName}</td>
+                  <td className="px-4 py-3">
+                    <p className="text-sm font-medium">{c.branchName}</p>
+                    {c.pharmacyName && (
+                      <p className="text-xs text-on-surface-variant">{c.pharmacyName}</p>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${

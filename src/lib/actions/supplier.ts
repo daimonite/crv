@@ -281,30 +281,20 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
       name: string;
       accounts: { id: string; name: string }[] | null;
     }[] | null;
+    order_line_items: {
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+    }[] | null;
   };
 
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, order_reference, currency, status, placed_at, branches!buyer_branch_id(id, name, accounts(id, name))")
+    .select("id, order_reference, currency, status, placed_at, branches!buyer_branch_id(id, name, accounts(id, name)), order_line_items(product_name, quantity, unit_price)")
     .eq("seller_id", account.id)
     .order("placed_at", { ascending: false });
 
-  if (!orders) return [];
-
-  const orderIds = (orders as unknown as OrderRow[]).map((o) => o.id);
-  const { data: lines } = await supabase
-    .from("order_line_items")
-    .select("order_id, product_name, quantity, unit_price")
-    .in("order_id", orderIds);
-
-  const byOrder = new Map<string, SupplierOrder["products"]>();
-  for (const line of lines ?? []) {
-    const list = byOrder.get(line.order_id) ?? [];
-    list.push({ name: line.product_name, qty: line.quantity, unitPrice: Number(line.unit_price) });
-    byOrder.set(line.order_id, list);
-  }
-
-  return (orders as unknown as OrderRow[]).map((o) => ({
+  return ((orders ?? []) as unknown as OrderRow[]).map((o) => ({
     id: o.id,
     orderRef: o.order_reference,
     pharmacyName: o.branches?.[0]?.accounts?.[0]?.name ?? "Pharmacy",
@@ -312,7 +302,11 @@ export async function getSupplierOrders(): Promise<SupplierOrder[]> {
     currency: o.currency,
     placedAt: o.placed_at,
     status: o.status,
-    products: byOrder.get(o.id) ?? [],
+    products: (o.order_line_items ?? []).map((line) => ({
+      name: line.product_name,
+      qty: line.quantity,
+      unitPrice: Number(line.unit_price),
+    })),
   }));
 }
 
@@ -405,17 +399,12 @@ export async function getSupplierAnalytics(): Promise<{
   since.setHours(0, 0, 0, 0);
   const sinceIso = since.toISOString();
 
-  const [quotesRes, ordersRes, linesRes] = await Promise.all([
+  const [quotesRes, ordersRes] = await Promise.all([
     supabase
       .from("quote_requests")
       .select("status, created_at")
       .eq("supplier_account_id", account.id)
       .gte("created_at", sinceIso),
-    supabase
-      .from("orders")
-      .select("status, placed_at")
-      .eq("seller_id", account.id)
-      .gte("placed_at", sinceIso),
     supabase
       .from("orders")
       .select("id, status, placed_at, order_line_items(product_name, quantity, unit_price)")
@@ -455,7 +444,7 @@ export async function getSupplierAnalytics(): Promise<{
 
   // Revenue per product (delivered orders only), derived from line items.
   const productMap = new Map<string, SupplierTopProduct>();
-  for (const o of (linesRes.data ?? []) as Array<{
+  for (const o of orders as Array<{
     id: string;
     status: string;
     placed_at: string;

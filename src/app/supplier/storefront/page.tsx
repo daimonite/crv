@@ -30,7 +30,7 @@ export default async function SupplierStorefrontPage() {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("id, name, type, tagline, payment_methods")
+    .select("id, name, type")
     .eq("auth_user_id", user.id)
     .single();
 
@@ -48,12 +48,22 @@ export default async function SupplierStorefrontPage() {
     products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] | null;
   };
 
-  const { data: catalogData } = await supabase
-    .from("supplier_catalog")
-    .select("id, sku, pack_size, price, currency, min_order_qty, stock_qty, lead_time_days, products(id, generic_name, brand_name, category)")
-    .eq("supplier_id", account.id)
-    .eq("status", "active")
-    .order("updated_at", { ascending: false });
+  const [
+    { data: paymentSettings },
+    { data: catalogData },
+  ] = await Promise.all([
+    supabase
+      .from("payment_settings")
+      .select("accepted_methods, default_method")
+      .eq("account_id", account.id)
+      .maybeSingle(),
+    supabase
+      .from("supplier_catalog")
+      .select("id, sku, pack_size, price, currency, min_order_qty, stock_qty, lead_time_days, products(id, generic_name, brand_name, category)")
+      .eq("supplier_id", account.id)
+      .eq("status", "active")
+      .order("updated_at", { ascending: false }),
+  ]);
 
   const products: StorefrontProduct[] = ((catalogData ?? []) as unknown as CatalogRow[]).map(row => ({
     id: row.id,
@@ -69,7 +79,7 @@ export default async function SupplierStorefrontPage() {
   }));
 
   const categories = [...new Set(products.map(p => p.category))].sort();
-  const paymentMethods = account?.payment_methods ?? [];
+  const paymentMethods = (paymentSettings?.accepted_methods as string[] | undefined) ?? [];
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -99,8 +109,8 @@ export default async function SupplierStorefrontPage() {
                     <h2 className="font-headline-md text-headline-md text-ink-deep truncate">
                       {account?.name ?? "Your Company"}
                     </h2>
-                    {account?.tagline && (
-                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">{account.tagline}</p>
+                    {(account as { tagline?: string | null })?.tagline && (
+                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">{(account as { tagline?: string | null }).tagline}</p>
                     )}
                   </div>
                 </div>

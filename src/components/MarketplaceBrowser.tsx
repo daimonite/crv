@@ -312,7 +312,15 @@ export default function MarketplaceBrowser({ products, branches }: MarketplaceBr
                   <div className="p-4 border-t border-outline-variant flex flex-col gap-3">
                     {submitError && (
                       <div className="text-error text-sm p-2 bg-error-container rounded">
-                        {submitError}
+                        <p>{submitError}</p>
+                        {submitError.includes("Network Map") && (
+                          <a
+                            href="/dashboard/network"
+                            className="inline-flex items-center gap-1 text-primary font-semibold text-xs mt-1.5 underline"
+                          >
+                            Go to Network Map →
+                          </a>
+                        )}
                       </div>
                     )}
                     {paymentInfo && (

@@ -33,20 +33,32 @@ export default async function BillingPage() {
 
   if (!account) redirect("/auth?next=/dashboard/billing");
 
-  const { data: branches } = await supabase
-    .from("branches")
-    .select("id")
-    .eq("account_id", account.id);
+  const [
+    { data: branches },
+    { data: plansData, error: plansError },
+    { data: settings },
+    { count: connectedSuppliers },
+  ] = await Promise.all([
+    supabase
+      .from("branches")
+      .select("id")
+      .eq("account_id", account.id),
+    getPlans(supabase, "pharmacy"),
+    supabase
+      .from("payment_settings")
+      .select("payme_wallet_number")
+      .eq("account_id", account.id)
+      .maybeSingle(),
+    supabase
+      .from("branch_supplier_connections")
+      .select("id, branches!inner(account_id)", { count: "exact", head: true })
+      .eq("branches.account_id", account.id)
+      .eq("status", "approved"),
+  ]);
+
   const branchList = branches ?? [];
   const branchCount = branchList.length;
 
-  const { count: connectedSuppliers } = await supabase
-    .from("branch_supplier_connections")
-    .select("id", { count: "exact", head: true })
-    .in("branch_id", branchList.map((b) => b.id))
-    .eq("status", "approved");
-
-  const { data: plansData, error: plansError } = await getPlans(supabase, "pharmacy");
   const plans = (plansData ?? []).map((p) => ({
     id: p.id,
     name: p.name,
@@ -61,11 +73,6 @@ export default async function BillingPage() {
   const currentPlan = plans.find((p) => p.id === account.subscription_plan) ?? null;
   const subscribed = isSubscribedActive(account);
 
-  const { data: settings } = await supabase
-    .from("payment_settings")
-    .select("payme_wallet_number")
-    .eq("account_id", account.id)
-    .maybeSingle();
   const walletHint = (settings as { payme_wallet_number?: string | null } | null)?.payme_wallet_number ?? undefined;
 
   return (

@@ -29,12 +29,16 @@ export default async function MarketplacePage() {
   // Enforce pharmacy-only access — supplier users are redirected to their own portal
   if (account?.type !== "pharmacy") redirect("/supplier");
 
-  const { data: branches } = await supabase
-    .from("branches")
-    .select("id, name")
-    .eq("account_id", account?.id ?? "");
-
-  const products = await getMarketplaceProducts();
+  const [
+    { data: branches },
+    products,
+  ] = await Promise.all([
+    supabase
+      .from("branches")
+      .select("id, name")
+      .eq("account_id", account.id),
+    getMarketplaceProducts(),
+  ]);
 
   return (
     <div className="flex min-h-screen bg-surface">

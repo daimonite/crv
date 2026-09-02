@@ -18,16 +18,20 @@ export default async function SupplierAnalyticsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth?next=/supplier/analytics");
 
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("name, type")
-    .eq("auth_user_id", user.id)
-    .single();
+  const [
+    { data: account },
+    analytics,
+  ] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("name, type")
+      .eq("auth_user_id", user.id)
+      .single(),
+    getSupplierAnalytics(),
+  ]);
 
   // Enforce supplier-only access
   if (account?.type !== "supplier") redirect("/dashboard");
-
-  const analytics = await getSupplierAnalytics();
 
   return (
     <div className="flex min-h-screen bg-surface">

@@ -32,15 +32,29 @@ export default async function SupplierSubscriptionPage() {
 
   if (account?.type !== "supplier") redirect("/dashboard");
 
-  const { data: plans, error: plansError } = await getPlans(supabase, "supplier");
-  const { count: connectedCount } = await supabase
-    .from("branch_supplier_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("supplier_id", account.id)
-    .eq("status", "approved");
+  const [
+    { data: plans, error: plansError },
+    { count: connectedCount },
+    { data: latestSub },
+  ] = await Promise.all([
+    getPlans(supabase, "supplier"),
+    supabase
+      .from("branch_supplier_connections")
+      .select("id", { count: "exact", head: true })
+      .eq("supplier_id", account.id)
+      .eq("status", "approved"),
+    supabase
+      .from("subscription_payments")
+      .select("plan_id, status, expires_at, created_at")
+      .eq("account_id", account.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  const currentPlan = plans?.find((p) => p.id === account.subscription_plan) ?? plans?.[0] ?? null;
-  const subscribed = isSubscribedActive(account) || (account.trial_ends_at && new Date(account.trial_ends_at) > new Date());
+  const activePlanId = account.subscription_plan || latestSub?.plan_id;
+  const currentPlan = plans?.find((p) => p.id === activePlanId || p.name === activePlanId) ?? plans?.[0] ?? null;
+  const subscribed = isSubscribedActive(account) || (account.trial_ends_at && new Date(account.trial_ends_at) > new Date()) || (latestSub?.status === "confirmed" && latestSub?.expires_at && new Date(latestSub.expires_at) > new Date());
 
   const statusConfig = subscribed
     ? {
@@ -89,14 +103,14 @@ export default async function SupplierSubscriptionPage() {
                     <div>
                       <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">Current plan</p>
                       <p className="font-body-lg text-body-lg text-ink-deep">
-                        {account.subscription_plan ?? "No plan selected"}
+                        {currentPlan ? currentPlan.name : (account.subscription_plan ?? "No plan selected")}
                       </p>
                     </div>
-                    {account.subscription_expires_at && (
+                    {(account.subscription_expires_at || latestSub?.expires_at) && (
                       <div>
                         <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">Paid until</p>
                         <p className="font-body-lg text-body-lg text-ink-deep">
-                          {new Date(account.subscription_expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                          {new Date(account.subscription_expires_at || latestSub?.expires_at || "").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
                         </p>
                       </div>
                     )}
@@ -142,7 +156,7 @@ export default async function SupplierSubscriptionPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {(plans ?? []).map((plan) => {
-                const isCurrent = plan.id === account.subscription_plan;
+                const isCurrent = subscribed && (plan.id === activePlanId || plan.name === activePlanId);
                 const unlimited = plan.max_connected_pharmacies >= UNLIMITED;
                 return (
                   <div

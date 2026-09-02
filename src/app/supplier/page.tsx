@@ -18,23 +18,10 @@ import { getT } from "@/lib/i18n/server";
 
 export default async function SupplierDashboard() {
   const t = await getT();
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/auth?next=/supplier");
-
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("id, name, type, billing_status")
-    .eq("auth_user_id", user.id)
-    .single();
-
-  if (account?.type !== "supplier") redirect("/dashboard");
-
   const dashboard = await getSupplierDashboardData();
-  const quotes = dashboard?.quotes ?? [];
+  if (!dashboard) redirect("/dashboard");
+
+  const { account, quotes, pendingOrders, deliveredCount } = dashboard;
   const pendingCount = quotes.filter((q) => q.status === "pending").length;
 
   return (

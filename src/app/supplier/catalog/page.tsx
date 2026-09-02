@@ -18,16 +18,21 @@ export default async function SupplierCatalogPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth?next=/supplier/catalog");
 
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("name, type")
-    .eq("auth_user_id", user.id)
-    .single();
+  const [
+    { data: account },
+    catalog,
+  ] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("name, type")
+      .eq("auth_user_id", user.id)
+      .single(),
+    getSupplierCatalog(),
+  ]);
 
   // Enforce supplier-only access — pharmacy users navigating here are sent back
   if (account?.type !== "supplier") redirect("/dashboard");
 
-  const catalog = await getSupplierCatalog();
   const activeCount = catalog.filter((p) => p.status === "active").length;
 
   return (

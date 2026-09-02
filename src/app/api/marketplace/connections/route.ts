@@ -24,15 +24,27 @@ export async function GET(request: NextRequest) {
   if (account.type === "supplier") {
     const { data, error } = await service
       .from("branch_supplier_connections")
-      .select("id, branch_id, status, requested_at, decided_at, branches(name)")
+      .select("id, branch_id, status, requested_at, decided_at, branches(name, accounts!account_id(name))")
       .eq("supplier_id", account.id)
       .order("requested_at", { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const rows = (data ?? []) as unknown as { id: string; branch_id: string; status: string; requested_at: string; decided_at: string | null; branches: { name: string }[] | null }[];
+    const rows = (data ?? []) as unknown as {
+      id: string;
+      branch_id: string;
+      status: string;
+      requested_at: string;
+      decided_at: string | null;
+      branches: { name: string; accounts: { name: string }[] | null }[] | null;
+    }[];
     return NextResponse.json({
       connections: rows.map((r) => ({
-        id: r.id, branchId: r.branch_id, branchName: r.branches?.[0]?.name ?? "Branch",
-        status: r.status, requestedAt: r.requested_at, decidedAt: r.decided_at,
+        id: r.id,
+        branchId: r.branch_id,
+        branchName: r.branches?.[0]?.name ?? "Branch",
+        pharmacyName: r.branches?.[0]?.accounts?.[0]?.name ?? "",
+        status: r.status,
+        requestedAt: r.requested_at,
+        decidedAt: r.decided_at,
       })),
     });
   }

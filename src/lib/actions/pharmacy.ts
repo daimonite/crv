@@ -41,42 +41,34 @@ export async function getPharmacyDashboardData() {
 
   if (!account) return null;
 
-  const { data: branches } = await supabase
-    .from("branches")
-    .select(
-      "id, name, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, lat, lng"
-    )
-    .eq("account_id", account.id)
-    .order("name");
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() + 30);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-  // Near-expiry batches — only fetch if there are branches to query.
-  // Without this guard, `.in("branch_id", [])` produces an invalid Supabase query
-  // when the account has no branches yet (new sign-ups, test accounts).
-  const branchIds = (branches ?? []).map((b) => b.id);
-
-  const expiringBatches =
-    branchIds.length === 0
-      ? []
-      : await (async () => {
-          const cutoff = new Date();
-          cutoff.setDate(cutoff.getDate() + 30);
-          const { data } = await supabase
-            .from("batches")
-            .select(
-              "id, quantity, expiry_date, product_id, branch_id, products(generic_name, brand_name), branches(name)"
-            )
-            .in("branch_id", branchIds)
-            .lte("expiry_date", cutoff.toISOString().slice(0, 10))
-            .gt("quantity", 0)
-            .order("expiry_date", { ascending: true })
-            .limit(10);
-          return data ?? [];
-        })();
+  const [branchesRes, batchesRes] = await Promise.all([
+    supabase
+      .from("branches")
+      .select(
+        "id, name, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, lat, lng"
+      )
+      .eq("account_id", account.id)
+      .order("name"),
+    supabase
+      .from("batches")
+      .select(
+        "id, quantity, expiry_date, product_id, branch_id, products(generic_name, brand_name), branches!inner(name, account_id)"
+      )
+      .eq("branches.account_id", account.id)
+      .lte("expiry_date", cutoffStr)
+      .gt("quantity", 0)
+      .order("expiry_date", { ascending: true })
+      .limit(10),
+  ]);
 
   return {
     account,
-    branches: branches ?? [],
-    expiringBatches,
+    branches: branchesRes.data ?? [],
+    expiringBatches: batchesRes.data ?? [],
   };
 }
 

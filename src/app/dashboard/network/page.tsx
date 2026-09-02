@@ -2,12 +2,15 @@
  * @route /dashboard/network
  * @access Authenticated pharmacy accounts only.
  * @description Pharmacy network map — the account's branch fleet overlaid on a
- * full-width Leaflet map, plus a connected-suppliers panel with plan usage.
+ * full-width Leaflet map, plus a connected-suppliers panel and a live panel
+ * showing pending supplier connection requests so the pharmacy can approve or
+ * reject them without needing the desktop app.
  */
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isSubscribedActive } from "@/lib/subscription";
 import PharmacySidebar from "@/components/PharmacySidebar";
+import NetworkConnectionsClient from "@/components/NetworkConnectionsClient";
 import Link from "next/link";
 import CervosMap from "@/components/MapClientWrapper";
 
@@ -36,29 +39,38 @@ export default async function NetworkPage() {
     .eq("account_id", account.id);
 
   const branchList = branches ?? [];
-  const { data: connections } = await supabase
-    .from("branch_supplier_connections")
-    .select("id, supplier_id, status, branches(id, name), accounts(supplier_id, id, name)")
-    .in(
-      "branch_id",
-      branchList.map((b) => b.id)
-    );
+  const branchIds = branchList.map((b) => b.id);
 
-  // Resolve supplier identity for approved connections.
-  const { data: supplierAccounts } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .in(
-      "id",
-      (connections ?? [])
+  type ConnectionRow = {
+    id: string;
+    supplier_id: string;
+    branch_id: string;
+    status: string;
+    requested_at: string;
+    decided_at: string | null;
+    accounts: { name: string }[] | null;
+    branches: { name: string }[] | null;
+  };
+
+  // Fetch connections with joined supplier and branch names in a single query
+  const { data: rawConnections } = branchIds.length > 0
+    ? await supabase
+        .from("branch_supplier_connections")
+        .select("id, supplier_id, branch_id, status, requested_at, decided_at, accounts!supplier_id(name), branches(name)")
+        .in("branch_id", branchIds)
+        .order("requested_at", { ascending: false })
+    : { data: [] };
+
+  const connectionList = (rawConnections ?? []) as unknown as ConnectionRow[];
+
+  // Approved suppliers for the sidebar summary
+  const approvedSuppliers = [
+    ...new Map(
+      connectionList
         .filter((c) => c.status === "approved")
-        .map((c) => c.supplier_id)
-    );
-
-  const suppliers = new Map<string, string>();
-  for (const acc of supplierAccounts ?? []) {
-    if (!suppliers.has(acc.id)) suppliers.set(acc.id, acc.name);
-  }
+        .map((c) => [c.supplier_id, c.accounts?.[0]?.name ?? "Supplier"] as const)
+    ).entries(),
+  ];
 
   const markers = branchList
     .filter((b) => b.lat && b.lng)
@@ -74,6 +86,19 @@ export default async function NetworkPage() {
       ? [markers[0].lat, markers[0].lng]
       : [-6.816, 39.2803];
 
+  // Shape connection rows for the client component
+  const pendingConnections = connectionList
+    .filter((c) => c.status === "pending")
+    .map((c) => ({
+      id: c.id,
+      supplierId: c.supplier_id,
+      supplierName: c.accounts?.[0]?.name ?? "Unknown supplier",
+      branchId: c.branch_id,
+      branchName: c.branches?.[0]?.name ?? "Unknown branch",
+      status: c.status as "pending" | "approved" | "rejected",
+      requestedAt: c.requested_at,
+    }));
+
   return (
     <div className="flex min-h-screen bg-surface">
       <PharmacySidebar branchName={branchList[0]?.name} accountName={account.name} />
@@ -86,6 +111,14 @@ export default async function NetworkPage() {
             </p>
             <h1 className="font-headline-md text-headline-md text-ink-deep leading-none">Network Map</h1>
           </div>
+          {pendingConnections.length > 0 && (
+            <div className="ml-auto flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="font-mono text-label-md text-amber-600 uppercase">
+                {pendingConnections.length} pending request{pendingConnections.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
         </header>
 
         <main className="flex-grow pt-16 flex">
@@ -105,6 +138,7 @@ export default async function NetworkPage() {
 
           {/* Right panel */}
           <aside className="w-80 shrink-0 border-l border-outline-variant bg-surface-base overflow-y-auto flex flex-col">
+            {/* Branch count */}
             <div className="px-6 py-5 border-b border-outline-variant">
               <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-xs mb-1">
                 Your branches
@@ -112,7 +146,8 @@ export default async function NetworkPage() {
               <p className="font-headline-md text-headline-md text-ink-deep">{branchList.length}</p>
             </div>
 
-            <div className="flex-1 divide-y divide-outline-variant/40">
+            {/* Branch list */}
+            <div className="divide-y divide-outline-variant/40">
               {branchList.length === 0 ? (
                 <p className="px-6 py-8 text-center text-sm text-on-surface-variant">No branches.</p>
               ) : (
@@ -138,17 +173,26 @@ export default async function NetworkPage() {
               )}
             </div>
 
+            {/* Pending connection requests — approve / reject inline */}
+            <div className="px-6 py-5 border-t border-outline-variant">
+              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-xs mb-3">
+                Connection requests
+              </p>
+              <NetworkConnectionsClient initialConnections={pendingConnections} />
+            </div>
+
+            {/* Approved suppliers summary */}
             <div className="px-6 py-5 border-t border-outline-variant">
               <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-xs mb-3">
                 Connected suppliers
               </p>
-              {suppliers.size === 0 ? (
+              {approvedSuppliers.length === 0 ? (
                 <p className="text-sm text-on-surface-variant">
                   No approved supplier connections yet.
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {[...suppliers.entries()].map(([id, name]) => (
+                  {approvedSuppliers.map(([id, name]) => (
                     <li key={id} className="flex items-center gap-2 text-sm text-ink-deep">
                       <span className="material-symbols-outlined text-[16px] text-primary">inventory_2</span>
                       <span className="truncate">{name}</span>

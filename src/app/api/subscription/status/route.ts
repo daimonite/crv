@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   let plan: SubscriptionPlan | null = null;
   if (plans) {
-    plan = plans.find((p) => p.id === account.subscription_plan) ?? null;
+    plan = plans.find((p) => p.id === account.subscription_plan || p.name === account.subscription_plan) ?? null;
     if (!plan) plan = plans[0] ?? null;
   }
 
