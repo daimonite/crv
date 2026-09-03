@@ -17,6 +17,7 @@ const adminNavItems = [
   { path: '/users', icon: 'group', key: 'nav.users' },
   { path: '/records', icon: 'receipt_long', key: 'nav.records' },
   { path: '/marketplace', icon: 'store', key: 'nav.marketplace' },
+  { path: '/orders', icon: 'receipt', key: 'nav.orders' },
   { path: '/subscription', icon: 'credit_card', key: 'nav.subscription' },
 ]
 

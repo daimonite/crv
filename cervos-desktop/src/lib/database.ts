@@ -214,6 +214,35 @@ async function runMigrations(): Promise<void> {
     )
   `)
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      order_reference TEXT,
+      supplier_name TEXT,
+      currency TEXT DEFAULT 'TZS',
+      status TEXT DEFAULT 'pending',
+      note TEXT,
+      placed_at TEXT,
+      approved_at TEXT,
+      confirmed_at TEXT,
+      shipped_at TEXT,
+      delivered_at TEXT,
+      cancelled_at TEXT,
+      updated_at TEXT
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS order_line_items (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      product_name TEXT,
+      quantity INTEGER DEFAULT 0,
+      unit_price REAL DEFAULT 0,
+      FOREIGN KEY (order_id) REFERENCES orders(id)
+    )
+  `)
+
   const operatorCheck = db.exec('SELECT COUNT(*) as count FROM operators')
   const operatorCount = operatorCheck.length > 0 && operatorCheck[0].values.length > 0 ? operatorCheck[0].values[0][0] : 0
   if (operatorCount === 0) {

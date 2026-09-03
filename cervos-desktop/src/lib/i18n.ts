@@ -16,6 +16,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.users': 'Users',
     'nav.records': 'Records',
     'nav.marketplace': 'Marketplace',
+    'nav.orders': 'Orders',
     'nav.subscription': 'Subscription',
 
     // Settings page
@@ -80,6 +81,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.users': 'Watumiaji',
     'nav.records': 'Rekodi',
     'nav.marketplace': 'Soko',
+    'nav.orders': 'Maagizo',
     'nav.subscription': 'Usajili',
 
     // Settings page

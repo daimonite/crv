@@ -1,0 +1,561 @@
+diff --git a/cervos-desktop/src/App.tsx b/cervos-desktop/src/App.tsx
+index 516555c..29b9e1c 100644
+--- a/cervos-desktop/src/App.tsx
++++ b/cervos-desktop/src/App.tsx
+@@ -11,6 +11,7 @@ import Shifts from './pages/Shifts'
+ import Reports from './pages/Reports'
+ import Users from './pages/Users'
+ import Marketplace from './pages/Marketplace'
++import Orders from './pages/Orders'
+ import Subscription from './pages/Subscription'
+ import Onboarding from './pages/Onboarding'
+ import Records from './pages/Records'
+@@ -161,6 +162,7 @@ function AppRoutes() {
+           <Route path="shifts" element={<Shifts />} />
+           <Route path="alerts" element={<Alerts />} />
+           <Route path="marketplace" element={<Marketplace />} />
++          <Route path="orders" element={<AdminRoute><Orders /></AdminRoute>} />
+           <Route path="subscription" element={<Subscription />} />
+         </Route>
+       </Routes>
+diff --git a/cervos-desktop/src/components/Sidebar.tsx b/cervos-desktop/src/components/Sidebar.tsx
+index 7df466e..368dddc 100644
+--- a/cervos-desktop/src/components/Sidebar.tsx
++++ b/cervos-desktop/src/components/Sidebar.tsx
+@@ -17,6 +17,7 @@ const adminNavItems = [
+   { path: '/users', icon: 'group', key: 'nav.users' },
+   { path: '/records', icon: 'receipt_long', key: 'nav.records' },
+   { path: '/marketplace', icon: 'store', key: 'nav.marketplace' },
++  { path: '/orders', icon: 'receipt', key: 'nav.orders' },
+   { path: '/subscription', icon: 'credit_card', key: 'nav.subscription' },
+ ]
+ 
+diff --git a/cervos-desktop/src/lib/database.ts b/cervos-desktop/src/lib/database.ts
+index d357609..f64dc0f 100644
+--- a/cervos-desktop/src/lib/database.ts
++++ b/cervos-desktop/src/lib/database.ts
+@@ -214,6 +214,35 @@ async function runMigrations(): Promise<void> {
+     )
+   `)
+ 
++  db.run(`
++    CREATE TABLE IF NOT EXISTS orders (
++      id TEXT PRIMARY KEY,
++      order_reference TEXT,
++      supplier_name TEXT,
++      currency TEXT DEFAULT 'TZS',
++      status TEXT DEFAULT 'pending',
++      note TEXT,
++      placed_at TEXT,
++      approved_at TEXT,
++      confirmed_at TEXT,
++      shipped_at TEXT,
++      delivered_at TEXT,
++      cancelled_at TEXT,
++      updated_at TEXT
++    )
++  `)
++
++  db.run(`
++    CREATE TABLE IF NOT EXISTS order_line_items (
++      id TEXT PRIMARY KEY,
++      order_id TEXT NOT NULL,
++      product_name TEXT,
++      quantity INTEGER DEFAULT 0,
++      unit_price REAL DEFAULT 0,
++      FOREIGN KEY (order_id) REFERENCES orders(id)
++    )
++  `)
++
+   const operatorCheck = db.exec('SELECT COUNT(*) as count FROM operators')
+   const operatorCount = operatorCheck.length > 0 && operatorCheck[0].values.length > 0 ? operatorCheck[0].values[0][0] : 0
+   if (operatorCount === 0) {
+diff --git a/cervos-desktop/src/lib/i18n.ts b/cervos-desktop/src/lib/i18n.ts
+index 9d3d135..5da0290 100644
+--- a/cervos-desktop/src/lib/i18n.ts
++++ b/cervos-desktop/src/lib/i18n.ts
+@@ -16,6 +16,7 @@ const translations: Record<Locale, Record<string, string>> = {
+     'nav.users': 'Users',
+     'nav.records': 'Records',
+     'nav.marketplace': 'Marketplace',
++    'nav.orders': 'Orders',
+     'nav.subscription': 'Subscription',
+ 
+     // Settings page
+@@ -80,6 +81,7 @@ const translations: Record<Locale, Record<string, string>> = {
+     'nav.users': 'Watumiaji',
+     'nav.records': 'Rekodi',
+     'nav.marketplace': 'Soko',
++    'nav.orders': 'Maagizo',
+     'nav.subscription': 'Usajili',
+ 
+     // Settings page
+diff --git a/cervos-desktop/src/lib/sync.ts b/cervos-desktop/src/lib/sync.ts
+index c157896..ca8ebf4 100644
+--- a/cervos-desktop/src/lib/sync.ts
++++ b/cervos-desktop/src/lib/sync.ts
+@@ -393,6 +393,47 @@ async function applyPulledData(data: any): Promise<void> {
+   for (const cmd of data.commands || []) {
+     await applyCommand(cmd)
+   }
++  for (const o of data.orders || []) {
++    await upsertLocal('orders', {
++      id: o.id,
++      order_reference: o.order_reference,
++      // to-one embed: accounts!seller_id(name) — a Supabase object, not an array
++      // (see the "to-one embeds return objects, not arrays" fix applied web-side).
++      supplier_name: o.accounts?.name ?? 'Supplier',
++      currency: o.currency ?? 'TZS',
++      status: o.status,
++      note: o.note ?? null,
++      placed_at: o.placed_at ?? null,
++      approved_at: o.approved_at ?? null,
++      confirmed_at: o.confirmed_at ?? null,
++      shipped_at: o.shipped_at ?? null,
++      delivered_at: o.delivered_at ?? null,
++      cancelled_at: o.cancelled_at ?? null,
++      updated_at: o.updated_at ?? null,
++    })
++  }
++  for (const li of data.orderLineItems || []) {
++    await upsertLocal('order_line_items', {
++      id: li.id,
++      order_id: li.order_id,
++      product_name: li.product_name,
++      quantity: li.quantity,
++      unit_price: li.unit_price,
++    })
++  }
++  for (const n of data.notifications || []) {
++    await upsertLocal('notifications', {
++      id: n.id,
++      kind: n.kind,
++      title: n.title,
++      body: n.body,
++      route: n.route ?? null,
++      action: n.action ?? null,
++      admin_only: n.admin_only ? 1 : 0,
++      read: n.read ? 1 : 0,
++      created_at: n.created_at,
++    })
++  }
+ }
+ 
+ // â”€â”€â”€ Full sync cycle (pull + push + subscription + commands) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@@ -424,7 +465,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
+ 
+     const since = (await getLastPullTimestamp(branchId)) || '1970-01-01T00:00:00Z'
+ 
+-    const [prodRes, batchRes, cmdRes, branchRes, opRes] = await Promise.all([
++    const [prodRes, batchRes, cmdRes, branchRes, opRes, orderRes] = await Promise.all([
+       Ie.from('products').select('*').gt('updated_at', since),
+       Ie.from('batches').select('*').eq('branch_id', branchId).gt('updated_at', since),
+       Ie.from('branch_commands').select('*').eq('branch_id', branchId).eq('status', 'pending'),
+@@ -435,6 +476,13 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
+       // operators has no updated_at column to filter incrementally on, and per-branch
+       // counts are small, so pull the full set for this branch every cycle.
+       Ie.from('operators').select('*').eq('branch_id', branchId),
++      // Orders placed by this branch — status changes (approved/confirmed/
++      // shipped/delivered) bump updated_at web-side, so this is a proper
++      // incremental delta, not a full re-pull every cycle.
++      Ie.from('orders')
++        .select('id, order_reference, currency, status, note, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at, updated_at, accounts!seller_id(name)')
++        .eq('buyer_branch_id', branchId)
++        .gt('updated_at', since),
+     ])
+ 
+     const products = prodRes.data || []
+@@ -442,10 +490,34 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
+     const commands = cmdRes.data || []
+     const branch = branchRes.data || null
+     const operators = opRes.data || []
++    const orders = orderRes.data || []
++
++    // Line items never change after order creation, so it's enough to pull
++    // them only for orders that just changed in this same cycle.
++    let orderLineItems: any[] = []
++    if (orders.length > 0) {
++      const liRes = await Ie
++        .from('order_line_items')
++        .select('id, order_id, product_name, quantity, unit_price')
++        .in('order_id', orders.map((o: any) => o.id))
++      orderLineItems = liRes.data || []
++    }
+ 
+-    const pulled = products.length + batches.length + commands.length + operators.length
+-
+-    await applyPulledData({ products, batches, commands, branch, operators })
++    // Notifications for this pharmacy account (order approved/paid, low
++    // stock, etc.) — a simple bounded pull rather than a delta, since the
++    // volume per account is small and "read" state can flip without
++    // touching created_at.
++    const notifRes = await Ie
++      .from('notifications')
++      .select('*')
++      .eq('account_id', accountId)
++      .order('created_at', { ascending: false })
++      .limit(100)
++    const notifications = notifRes.data || []
++
++    const pulled = products.length + batches.length + commands.length + operators.length + orders.length + notifications.length
++
++    await applyPulledData({ products, batches, commands, branch, operators, orders, orderLineItems, notifications })
+ 
+     if (commands.length > 0) {
+       await Ie.from('branch_commands')
+diff --git a/cervos-desktop/src/pages/Alerts.tsx b/cervos-desktop/src/pages/Alerts.tsx
+index a4982b8..2ae0c0e 100644
+--- a/cervos-desktop/src/pages/Alerts.tsx
++++ b/cervos-desktop/src/pages/Alerts.tsx
+@@ -1,6 +1,7 @@
+ ﻿import { useState, useEffect } from 'react'
+-import { queryDb } from '../lib/database'
++import { queryDb, executeDb } from '../lib/database'
+ import { useAuthStore } from '../lib/store'
++import { getSupabase } from '../lib/sync'
+ 
+ interface SubscriptionInfo {
+   status: string
+@@ -8,16 +9,48 @@ interface SubscriptionInfo {
+   trial_ends_at: string | null
+ }
+ 
++interface LocalNotification {
++  id: string
++  kind: string
++  title: string
++  body: string
++  route: string | null
++  admin_only: number
++  read: number
++  created_at: string
++}
++
+ export default function Alerts() {
+   const { isAdmin, isAuthenticated } = useAuthStore()
+   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
+   const [showBanner, setShowBanner] = useState(false)
+   const [bannerMessage, setBannerMessage] = useState('')
++  const [notifications, setNotifications] = useState<LocalNotification[]>([])
+ 
+   useEffect(() => {
+     loadSubscription()
++    loadNotifications()
+   }, [])
+ 
++  async function loadNotifications() {
++    const rows = (await queryDb('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')) as LocalNotification[]
++    setNotifications(rows)
++  }
++
++  async function markRead(n: LocalNotification) {
++    if (n.read) return
++    await executeDb('UPDATE notifications SET read = 1 WHERE id = ?', [n.id])
++    setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: 1 } : x)))
++    // Best-effort: reflect read state back to the pharmacy portal too. If this
++    // fails (offline, etc.) the next sync pull will just re-show it as
++    // unread locally — not destructive, so no retry queue needed here.
++    try {
++      await getSupabase().from('notifications').update({ read: true }).eq('id', n.id)
++    } catch {
++      /* offline — fine, local read-state already stuck */
++    }
++  }
++
+   async function loadSubscription() {
+     const statusResult = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_status'")
+     const graceResult = await queryDb("SELECT value FROM app_settings WHERE key = 'grace_ends_at'")
+@@ -113,13 +146,46 @@ export default function Alerts() {
+         </div>
+       )}
+ 
+-      {!showBanner && !isAdmin && (
++      {!showBanner && !isAdmin && notifications.length === 0 && (
+         <div className="mt-6 text-center text-on-surface-variant">
+           <span className="material-symbols-outlined text-5xl">notifications_off</span>
+           <p className="mt-2 font-medium">No alerts</p>
+           <p className="text-sm">You're all caught up</p>
+         </div>
+       )}
++
++      {notifications.filter((n) => isAdmin || !n.admin_only).length > 0 && (
++        <div className="mt-6 bg-surface-base border border-outline-variant rounded-xl overflow-hidden">
++          <h2 className="font-headline text-lg font-bold text-on-surface p-5 pb-3">
++            Notifications from your pharmacy
++          </h2>
++          <ul className="divide-y divide-outline-variant/60">
++            {notifications
++              .filter((n) => isAdmin || !n.admin_only)
++              .map((n) => (
++                <li
++                  key={n.id}
++                  onClick={() => markRead(n)}
++                  className={`p-4 flex items-start gap-3 cursor-pointer transition-colors ${
++                    n.read ? 'opacity-60' : 'bg-primary/5'
++                  } hover:bg-outline-variant/20`}
++                >
++                  <span className="material-symbols-outlined text-primary text-xl shrink-0">
++                    {n.kind === 'order' ? 'receipt_long' : n.kind === 'payment' ? 'payments' : 'campaign'}
++                  </span>
++                  <div className="min-w-0">
++                    <p className="font-semibold text-on-surface text-sm">{n.title}</p>
++                    <p className="text-sm text-on-surface-variant mt-0.5">{n.body}</p>
++                    <p className="text-xs text-on-surface-variant/70 mt-1">
++                      {new Date(n.created_at).toLocaleString()}
++                    </p>
++                  </div>
++                  {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
++                </li>
++              ))}
++          </ul>
++        </div>
++      )}
+     </div>
+   )
+ }
+\ No newline at end of file
+diff --git a/cervos-desktop/src/pages/Orders.tsx b/cervos-desktop/src/pages/Orders.tsx
+new file mode 100644
+index 0000000..53a78b6
+--- /dev/null
++++ b/cervos-desktop/src/pages/Orders.tsx
+@@ -0,0 +1,239 @@
++import { useState, useEffect, useCallback } from 'react'
++import { queryDb } from '../lib/database'
++import { supabase } from '../lib/supabase'
++import { runSyncCycle } from '../lib/sync'
++
++const WEB_URL =
++  (import.meta.env.VITE_WEB_URL as string | undefined) ||
++  (import.meta.env.VITE_APP_URL as string | undefined) ||
++  'https://cervos.online'
++
++interface LocalOrder {
++  id: string
++  order_reference: string
++  supplier_name: string
++  currency: string
++  status: 'pending' | 'approved' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
++  note: string | null
++  placed_at: string | null
++  approved_at: string | null
++  confirmed_at: string | null
++  shipped_at: string | null
++  delivered_at: string | null
++  cancelled_at: string | null
++  updated_at: string | null
++}
++
++interface LineItem {
++  id: string
++  order_id: string
++  product_name: string
++  quantity: number
++  unit_price: number
++}
++
++const STATUS_STYLES: Record<LocalOrder['status'], string> = {
++  pending: 'bg-amber-100 text-amber-700',
++  approved: 'bg-violet-100 text-violet-700',
++  confirmed: 'bg-blue-100 text-blue-700',
++  shipped: 'bg-cyan-100 text-cyan-700',
++  delivered: 'bg-green-100 text-green-700',
++  cancelled: 'bg-red-100 text-red-700',
++}
++
++const STATUS_LABEL: Record<LocalOrder['status'], string> = {
++  pending: 'Awaiting supplier approval',
++  approved: 'Approved — ready to pay',
++  confirmed: 'Paid — awaiting shipment',
++  shipped: 'Shipped',
++  delivered: 'Delivered',
++  cancelled: 'Cancelled',
++}
++
++export default function Orders() {
++  const [orders, setOrders] = useState<LocalOrder[]>([])
++  const [lineItems, setLineItems] = useState<Record<string, LineItem[]>>({})
++  const [loading, setLoading] = useState(true)
++  const [syncing, setSyncing] = useState(false)
++  const [expanded, setExpanded] = useState<string | null>(null)
++  const [payWallet, setPayWallet] = useState('')
++  const [payBusy, setPayBusy] = useState<string | null>(null)
++  const [payError, setPayError] = useState<string | null>(null)
++
++  const loadLocal = useCallback(async () => {
++    setLoading(true)
++    try {
++      const rows = (await queryDb(
++        'SELECT * FROM orders ORDER BY placed_at DESC'
++      )) as LocalOrder[]
++      setOrders(rows)
++
++      const itemRows = (await queryDb(
++        'SELECT * FROM order_line_items'
++      )) as LineItem[]
++      const grouped: Record<string, LineItem[]> = {}
++      for (const li of itemRows) {
++        ;(grouped[li.order_id] ??= []).push(li)
++      }
++      setLineItems(grouped)
++
++      const savedWallet = await queryDb("SELECT value FROM app_settings WHERE key = 'payme_wallet_number'")
++      if (savedWallet.length) setPayWallet(JSON.parse(savedWallet[0].value))
++    } finally {
++      setLoading(false)
++    }
++  }, [])
++
++  useEffect(() => {
++    loadLocal()
++  }, [loadLocal])
++
++  async function refresh() {
++    setSyncing(true)
++    try {
++      await runSyncCycle()
++      await loadLocal()
++    } finally {
++      setSyncing(false)
++    }
++  }
++
++  function orderTotal(orderId: string): number {
++    return (lineItems[orderId] ?? []).reduce((sum, li) => sum + li.quantity * li.unit_price, 0)
++  }
++
++  async function payOrder(order: LocalOrder) {
++    setPayError(null)
++    const wallet = payWallet.trim()
++    if (!wallet) {
++      setPayError('Enter a Payme Africa wallet number to pay with.')
++      return
++    }
++    setPayBusy(order.id)
++    try {
++      const { data: { session } } = await supabase.auth.getSession()
++      if (!session?.access_token) throw new Error('Not signed in — sign in again.')
++
++      await queryDb(
++        `INSERT INTO app_settings (key, value) VALUES ('payme_wallet_number', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
++        [JSON.stringify(wallet)]
++      )
++
++      const res = await fetch(`${WEB_URL}/api/marketplace/pay-order`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
++        body: JSON.stringify({ orderId: order.id, msisdn: wallet }),
++      })
++      const json = (await res.json()) as { error?: string; payment?: { status: string; message?: string } }
++      if (!res.ok) throw new Error(json.error || `Payment failed (${res.status})`)
++
++      alert(json.payment?.message || 'Payment initiated — check your phone for the mobile money prompt.')
++      await refresh()
++    } catch (e) {
++      setPayError(e instanceof Error ? e.message : 'Payment failed')
++    } finally {
++      setPayBusy(null)
++    }
++  }
++
++  return (
++    <div className="flex-1 p-8 flex flex-col gap-6 max-w-[1000px] mx-auto w-full overflow-y-auto">
++      <div className="flex items-center justify-between">
++        <div>
++          <h1 className="text-2xl font-bold text-on-surface">Orders</h1>
++          <p className="text-sm text-on-surface-variant mt-1">
++            Marketplace orders placed by this branch, synced from the pharmacy portal.
++          </p>
++        </div>
++        <button
++          onClick={refresh}
++          disabled={syncing}
++          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-outline-variant text-sm font-medium hover:bg-outline-variant/30 disabled:opacity-60"
++        >
++          <span className={`material-symbols-outlined text-[18px] ${syncing ? 'animate-spin' : ''}`}>sync</span>
++          {syncing ? 'Syncing…' : 'Refresh'}
++        </button>
++      </div>
++
++      {payError && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{payError}</div>}
++
++      {loading ? (
++        <p className="text-sm text-on-surface-variant">Loading…</p>
++      ) : orders.length === 0 ? (
++        <div className="flex flex-col items-center justify-center py-16 text-on-surface-variant">
++          <span className="material-symbols-outlined text-5xl mb-2">receipt_long</span>
++          <p>No orders yet. Place one from Marketplace.</p>
++        </div>
++      ) : (
++        <div className="flex flex-col gap-3">
++          {orders.map((order) => {
++            const total = orderTotal(order.id)
++            const isExpanded = expanded === order.id
++            return (
++              <div key={order.id} className="border border-outline-variant rounded-xl overflow-hidden bg-surface-base">
++                <button
++                  className="w-full flex items-center justify-between p-4 text-left"
++                  onClick={() => setExpanded(isExpanded ? null : order.id)}
++                >
++                  <div>
++                    <p className="font-semibold text-on-surface">{order.order_reference}</p>
++                    <p className="text-sm text-on-surface-variant">{order.supplier_name}</p>
++                  </div>
++                  <div className="flex items-center gap-3">
++                    <span className="font-semibold text-on-surface">
++                      {order.currency} {total.toLocaleString()}
++                    </span>
++                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[order.status]}`}>
++                      {STATUS_LABEL[order.status]}
++                    </span>
++                    <span className="material-symbols-outlined text-on-surface-variant">
++                      {isExpanded ? 'expand_less' : 'expand_more'}
++                    </span>
++                  </div>
++                </button>
++
++                {isExpanded && (
++                  <div className="border-t border-outline-variant p-4 flex flex-col gap-3">
++                    <ul className="text-sm divide-y divide-outline-variant/50">
++                      {(lineItems[order.id] ?? []).map((li) => (
++                        <li key={li.id} className="flex justify-between py-1.5">
++                          <span>{li.product_name} × {li.quantity}</span>
++                          <span>{order.currency} {(li.quantity * li.unit_price).toLocaleString()}</span>
++                        </li>
++                      ))}
++                    </ul>
++
++                    {order.status === 'pending' && (
++                      <p className="text-sm text-on-surface-variant">
++                        Waiting for {order.supplier_name} to approve this order before it can be paid.
++                      </p>
++                    )}
++
++                    {order.status === 'approved' && (
++                      <div className="flex gap-2 pt-2">
++                        <input
++                          value={payWallet}
++                          onChange={(e) => setPayWallet(e.target.value)}
++                          placeholder="0712 345 678 or +255712345678"
++                          className="flex-1 px-3 py-2 border border-outline-variant rounded-lg text-sm"
++                        />
++                        <button
++                          onClick={() => payOrder(order)}
++                          disabled={payBusy === order.id}
++                          className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium disabled:opacity-60 flex items-center gap-1"
++                        >
++                          <span className="material-symbols-outlined text-[16px]">smartphone</span>
++                          {payBusy === order.id ? 'Paying…' : 'Pay via mobile money'}
++                        </button>
++                      </div>
++                    )}
++                  </div>
++                )}
++              </div>
++            )
++          })}
++        </div>
++      )}
++    </div>
++  )
++}

@@ -11,6 +11,7 @@ import Shifts from './pages/Shifts'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Marketplace from './pages/Marketplace'
+import Orders from './pages/Orders'
 import Subscription from './pages/Subscription'
 import Onboarding from './pages/Onboarding'
 import Records from './pages/Records'
@@ -161,6 +162,7 @@ function AppRoutes() {
           <Route path="shifts" element={<Shifts />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="marketplace" element={<Marketplace />} />
+          <Route path="orders" element={<AdminRoute><Orders /></AdminRoute>} />
           <Route path="subscription" element={<Subscription />} />
         </Route>
       </Routes>

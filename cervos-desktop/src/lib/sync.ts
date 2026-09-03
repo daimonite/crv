@@ -393,6 +393,47 @@ async function applyPulledData(data: any): Promise<void> {
   for (const cmd of data.commands || []) {
     await applyCommand(cmd)
   }
+  for (const o of data.orders || []) {
+    await upsertLocal('orders', {
+      id: o.id,
+      order_reference: o.order_reference,
+      // to-one embed: accounts!seller_id(name) — a Supabase object, not an array
+      // (see the "to-one embeds return objects, not arrays" fix applied web-side).
+      supplier_name: o.accounts?.name ?? 'Supplier',
+      currency: o.currency ?? 'TZS',
+      status: o.status,
+      note: o.note ?? null,
+      placed_at: o.placed_at ?? null,
+      approved_at: o.approved_at ?? null,
+      confirmed_at: o.confirmed_at ?? null,
+      shipped_at: o.shipped_at ?? null,
+      delivered_at: o.delivered_at ?? null,
+      cancelled_at: o.cancelled_at ?? null,
+      updated_at: o.updated_at ?? null,
+    })
+  }
+  for (const li of data.orderLineItems || []) {
+    await upsertLocal('order_line_items', {
+      id: li.id,
+      order_id: li.order_id,
+      product_name: li.product_name,
+      quantity: li.quantity,
+      unit_price: li.unit_price,
+    })
+  }
+  for (const n of data.notifications || []) {
+    await upsertLocal('notifications', {
+      id: n.id,
+      kind: n.kind,
+      title: n.title,
+      body: n.body,
+      route: n.route ?? null,
+      action: n.action ?? null,
+      admin_only: n.admin_only ? 1 : 0,
+      read: n.read ? 1 : 0,
+      created_at: n.created_at,
+    })
+  }
 }
 
 // â”€â”€â”€ Full sync cycle (pull + push + subscription + commands) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -424,7 +465,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
 
     const since = (await getLastPullTimestamp(branchId)) || '1970-01-01T00:00:00Z'
 
-    const [prodRes, batchRes, cmdRes, branchRes, opRes] = await Promise.all([
+    const [prodRes, batchRes, cmdRes, branchRes, opRes, orderRes] = await Promise.all([
       Ie.from('products').select('*').gt('updated_at', since),
       Ie.from('batches').select('*').eq('branch_id', branchId).gt('updated_at', since),
       Ie.from('branch_commands').select('*').eq('branch_id', branchId).eq('status', 'pending'),
@@ -435,6 +476,13 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
       // operators has no updated_at column to filter incrementally on, and per-branch
       // counts are small, so pull the full set for this branch every cycle.
       Ie.from('operators').select('*').eq('branch_id', branchId),
+      // Orders placed by this branch — status changes (approved/confirmed/
+      // shipped/delivered) bump updated_at web-side, so this is a proper
+      // incremental delta, not a full re-pull every cycle.
+      Ie.from('orders')
+        .select('id, order_reference, currency, status, note, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at, updated_at, accounts!seller_id(name)')
+        .eq('buyer_branch_id', branchId)
+        .gt('updated_at', since),
     ])
 
     const products = prodRes.data || []
@@ -442,10 +490,34 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
     const commands = cmdRes.data || []
     const branch = branchRes.data || null
     const operators = opRes.data || []
+    const orders = orderRes.data || []
 
-    const pulled = products.length + batches.length + commands.length + operators.length
+    // Line items never change after order creation, so it's enough to pull
+    // them only for orders that just changed in this same cycle.
+    let orderLineItems: any[] = []
+    if (orders.length > 0) {
+      const liRes = await Ie
+        .from('order_line_items')
+        .select('id, order_id, product_name, quantity, unit_price')
+        .in('order_id', orders.map((o: any) => o.id))
+      orderLineItems = liRes.data || []
+    }
 
-    await applyPulledData({ products, batches, commands, branch, operators })
+    // Notifications for this pharmacy account (order approved/paid, low
+    // stock, etc.) — a simple bounded pull rather than a delta, since the
+    // volume per account is small and "read" state can flip without
+    // touching created_at.
+    const notifRes = await Ie
+      .from('notifications')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    const notifications = notifRes.data || []
+
+    const pulled = products.length + batches.length + commands.length + operators.length + orders.length + notifications.length
+
+    await applyPulledData({ products, batches, commands, branch, operators, orders, orderLineItems, notifications })
 
     if (commands.length > 0) {
       await Ie.from('branch_commands')

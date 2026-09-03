@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
-import { queryDb } from '../lib/database'
+import { queryDb, executeDb } from '../lib/database'
 import { useAuthStore } from '../lib/store'
+import { getSupabase } from '../lib/sync'
 
 interface SubscriptionInfo {
   status: string
@@ -8,15 +9,47 @@ interface SubscriptionInfo {
   trial_ends_at: string | null
 }
 
+interface LocalNotification {
+  id: string
+  kind: string
+  title: string
+  body: string
+  route: string | null
+  admin_only: number
+  read: number
+  created_at: string
+}
+
 export default function Alerts() {
   const { isAdmin, isAuthenticated } = useAuthStore()
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
   const [showBanner, setShowBanner] = useState(false)
   const [bannerMessage, setBannerMessage] = useState('')
+  const [notifications, setNotifications] = useState<LocalNotification[]>([])
 
   useEffect(() => {
     loadSubscription()
+    loadNotifications()
   }, [])
+
+  async function loadNotifications() {
+    const rows = (await queryDb('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')) as LocalNotification[]
+    setNotifications(rows)
+  }
+
+  async function markRead(n: LocalNotification) {
+    if (n.read) return
+    await executeDb('UPDATE notifications SET read = 1 WHERE id = ?', [n.id])
+    setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: 1 } : x)))
+    // Best-effort: reflect read state back to the pharmacy portal too. If this
+    // fails (offline, etc.) the next sync pull will just re-show it as
+    // unread locally — not destructive, so no retry queue needed here.
+    try {
+      await getSupabase().from('notifications').update({ read: true }).eq('id', n.id)
+    } catch {
+      /* offline — fine, local read-state already stuck */
+    }
+  }
 
   async function loadSubscription() {
     const statusResult = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_status'")
@@ -113,11 +146,44 @@ export default function Alerts() {
         </div>
       )}
 
-      {!showBanner && !isAdmin && (
+      {!showBanner && !isAdmin && notifications.length === 0 && (
         <div className="mt-6 text-center text-on-surface-variant">
           <span className="material-symbols-outlined text-5xl">notifications_off</span>
           <p className="mt-2 font-medium">No alerts</p>
           <p className="text-sm">You're all caught up</p>
+        </div>
+      )}
+
+      {notifications.filter((n) => isAdmin || !n.admin_only).length > 0 && (
+        <div className="mt-6 bg-surface-base border border-outline-variant rounded-xl overflow-hidden">
+          <h2 className="font-headline text-lg font-bold text-on-surface p-5 pb-3">
+            Notifications from your pharmacy
+          </h2>
+          <ul className="divide-y divide-outline-variant/60">
+            {notifications
+              .filter((n) => isAdmin || !n.admin_only)
+              .map((n) => (
+                <li
+                  key={n.id}
+                  onClick={() => markRead(n)}
+                  className={`p-4 flex items-start gap-3 cursor-pointer transition-colors ${
+                    n.read ? 'opacity-60' : 'bg-primary/5'
+                  } hover:bg-outline-variant/20`}
+                >
+                  <span className="material-symbols-outlined text-primary text-xl shrink-0">
+                    {n.kind === 'order' ? 'receipt_long' : n.kind === 'payment' ? 'payments' : 'campaign'}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-on-surface text-sm">{n.title}</p>
+                    <p className="text-sm text-on-surface-variant mt-0.5">{n.body}</p>
+                    <p className="text-xs text-on-surface-variant/70 mt-1">
+                      {new Date(n.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+                </li>
+              ))}
+          </ul>
         </div>
       )}
     </div>
