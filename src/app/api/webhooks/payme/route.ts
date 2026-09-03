@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyWebhookSignature, type PaymeWebhookPayload } from "@/lib/payme";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { activateSubscription } from "@/lib/subscription";
+import { activateSubscription, activateBranchSubscription } from "@/lib/subscription";
 import { settleOrderPayout } from "@/lib/escrow";
 
 export async function POST(req: NextRequest) {
@@ -101,6 +101,11 @@ export async function POST(req: NextRequest) {
       const sub = await activateSubscription({ service: supabase, reference });
       if (!sub.ok) {
         console.error(`[Payme Webhook] Subscription activation failed for ${reference}: ${sub.message}`);
+      }
+    } else if (reference.startsWith("BRSUB-")) {
+      const sub = await activateBranchSubscription({ service: supabase, reference });
+      if (!sub.ok) {
+        console.error(`[Payme Webhook] Branch subscription activation failed for ${reference}: ${sub.message}`);
       }
     } else if (payment.order_id) {
       // Escrow settlement: confirm order + disburse to supplier.
