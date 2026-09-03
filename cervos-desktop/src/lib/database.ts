@@ -1,5 +1,9 @@
-﻿let db: any = null
+let db: any = null
 let SQL: any = null
+
+// Vite resolves this at build time to the correct hashed asset URL, which
+// works with Tauri's tauri://localhost/ custom protocol on Windows.
+import sqlWasmUrl from '/sql-wasm.wasm?url'
 
 const DB_KEY = 'cervos_db'
 
@@ -8,12 +12,12 @@ export async function initDb(): Promise<void> {
 
   try {
     const initSqlJs = (await import('sql.js')).default
-    
+
     const locateWasm = (file: string) => {
-      const cdnUrl = `https://cdn.jsdelivr.net/npm/sql.js/dist/${file}`
-      return cdnUrl
+      if (file === 'sql-wasm.wasm') return sqlWasmUrl
+      return `https://cdn.jsdelivr.net/npm/sql.js/dist/${file}`
     }
-    
+
     SQL = await initSqlJs({ locateFile: locateWasm })
 
     const savedDb = localStorage.getItem(DB_KEY)
@@ -299,6 +303,7 @@ export async function queryDb(sql: string, params: any[] = [], timeoutMs = 5000)
 
 export async function executeDb(sql: string, params: any[] = []): Promise<void> {
   if (!db) await initDb()
+  if (!db) throw new Error('Database not initialized — sql.js failed to load.')
   db.run(sql, params)
   saveDb()
 }
