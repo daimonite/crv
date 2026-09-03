@@ -7,7 +7,7 @@ pub fn run() {
         .format_timestamp_millis()
         .init();
 
-    info!("Starting Cervos Pharmacy OS v0.1.1");
+    info!("Starting Cervos Pharmacy OS v{}", env!("CARGO_PKG_VERSION"));
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
