@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from './lib/hooks'
 import Shell from './components/Shell'
@@ -64,6 +64,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function OnboardingRoute() {
   const [isOnboarded, setIsOnboarded] = useState<boolean | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
+  const isRelinking = new URLSearchParams(location.search).get('relink') === '1'
 
   useEffect(() => {
     const check = async () => {
@@ -107,11 +109,16 @@ function OnboardingRoute() {
     )
   }
 
-  if (isOnboarded) {
+  // Settings can deliberately re-open the cloud-account linking flow for an
+  // established POS. Do not bounce that explicit request back to local login.
+  if (isOnboarded && !isRelinking) {
     return <Navigate to="/login" replace />
   }
 
-  return <Onboarding onComplete={() => navigate('/login')} />
+  return <Onboarding
+    relinking={isRelinking}
+    onComplete={() => navigate(isRelinking ? '/' : '/login')}
+  />
 }
 
 function AppRoutes() {

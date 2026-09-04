@@ -101,6 +101,29 @@ export async function ensureLinked(): Promise<boolean> {
   return restoringSession
 }
 
+/**
+ * Returns a session token suitable for a server API call. Refresh just before
+ * expiry (or on demand after a 401) so desktop requests never send a stale
+ * access token that the portal rejects.
+ */
+export async function getAccessToken(forceRefresh = false): Promise<string | null> {
+  if (!(await ensureLinked())) return null
+
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session) return null
+
+  const expiresSoon = Boolean(session.expires_at && session.expires_at * 1000 <= Date.now() + 60_000)
+  if (forceRefresh || expiresSoon) {
+    const { data, error } = await supabase.auth.refreshSession()
+    if (error || !data.session) return null
+    session = data.session
+    Ie = supabase
+    await saveSession(session)
+  }
+
+  return session.access_token
+}
+
 export async function signIn(
   n: string,
   t: string

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { queryDb } from '../lib/database'
-import { supabase } from '../lib/supabase'
-import { ensureLinked, runSyncCycle } from '../lib/sync'
+import { getAccessToken, runSyncCycle } from '../lib/sync'
 import { WEB_URL } from '../lib/web'
 
 interface LocalOrder {
@@ -31,6 +30,13 @@ interface LineItem {
   product_name: string
   quantity: number
   unit_price: number
+}
+
+interface PaymentReceipt {
+  orderReference: string
+  amount: number
+  currency: string
+  reference?: string
 }
 
 const STATUS_STYLES: Record<LocalOrder['status'], string> = {
@@ -73,6 +79,7 @@ export default function Orders() {
   const [payWallet, setPayWallet] = useState('')
   const [payBusy, setPayBusy] = useState<string | null>(null)
   const [payError, setPayError] = useState<string | null>(null)
+  const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceipt | null>(null)
 
   const loadLocal = useCallback(async () => {
     setLoading(true)
@@ -125,24 +132,39 @@ export default function Orders() {
     }
     setPayBusy(order.id)
     try {
-      await ensureLinked()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not signed in — sign in again.')
+      let accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Not signed in — sign in again.')
 
       await queryDb(
         `INSERT INTO app_settings (key, value) VALUES ('payme_wallet_number', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
         [JSON.stringify(wallet)]
       )
 
-      const res = await fetch(`${WEB_URL}/api/marketplace/pay-order`, {
+      const requestPayment = (token: string) => fetch(`${WEB_URL}/api/marketplace/pay-order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ orderId: order.id, msisdn: wallet }),
       })
-      const json = (await res.json()) as { error?: string; payment?: { status: string; message?: string } }
+
+      let res = await requestPayment(accessToken)
+      if (res.status === 401) {
+        accessToken = await getAccessToken(true)
+        if (!accessToken) throw new Error('Your web session has expired — sign in again.')
+        res = await requestPayment(accessToken)
+      }
+      const json = (await res.json()) as { error?: string; reference?: string; total?: number; payment?: { status: string; reference?: string; message?: string } }
       if (!res.ok) throw new Error(json.error || `Payment failed (${res.status})`)
 
-      alert(json.payment?.message || 'Payment initiated — check your phone for the mobile money prompt.')
+      if (json.payment?.status === 'completed') {
+        setPaymentReceipt({
+          orderReference: order.order_reference,
+          amount: Number(json.total ?? orderTotal(order.id)),
+          currency: order.currency,
+          reference: json.payment.reference ?? json.reference,
+        })
+      } else {
+        alert(json.payment?.message || 'Payment initiated — check your phone for the mobile money prompt.')
+      }
       await refresh()
     } catch (e) {
       setPayError(e instanceof Error ? e.message : 'Payment failed')
@@ -153,6 +175,24 @@ export default function Orders() {
 
   return (
     <div className="flex-1 p-8 flex flex-col gap-6 max-w-[1000px] mx-auto w-full overflow-y-auto">
+      {paymentReceipt && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-xl bg-surface-base p-6 shadow-xl">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-5xl text-secondary">check_circle</span>
+              <h2 className="mt-2 text-xl font-bold">Payment receipt</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Payme Africa payment completed</p>
+            </div>
+            <div className="mt-5 space-y-2 border-y border-outline-variant py-4 text-sm">
+              <div className="flex justify-between"><span>Order</span><strong>{paymentReceipt.orderReference}</strong></div>
+              <div className="flex justify-between"><span>Amount</span><strong>{paymentReceipt.currency} {paymentReceipt.amount.toLocaleString()}</strong></div>
+              <div className="flex justify-between"><span>Reference</span><span className="font-mono text-xs">{paymentReceipt.reference ?? 'Pending provider reference'}</span></div>
+              <div className="flex justify-between"><span>Status</span><strong className="text-secondary">Paid</strong></div>
+            </div>
+            <button onClick={() => setPaymentReceipt(null)} className="mt-5 w-full rounded-md bg-primary py-2.5 font-semibold text-on-primary">Done</button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Orders</h1>

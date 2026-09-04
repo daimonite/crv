@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { signIn, getLinkStatus, linkToExistingBranch, type RemoteBranch } from '../lib/sync'
 import { queryDb } from '../lib/database'
 import { useAuth } from '../lib/hooks'
-import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-shell'
+import { WEB_URL } from '../lib/web'
 
 type OnboardingStep = 'welcome' | 'link' | 'select-branch' | 'create-pin' | 'done'
 
 interface OnboardingProps {
   onComplete?: () => void
+  relinking?: boolean
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
+export default function Onboarding({ onComplete, relinking = false }: OnboardingProps) {
   const navigate = useNavigate()
   const { setOperator } = useAuth()
 
@@ -39,6 +41,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       // portal first; a POS device is not where a branch gets created.
       const status = await getLinkStatus()
       if (status.alreadyLinked) {
+        // A Settings-initiated relink only restores the cloud session for the
+        // existing branch. It must not send an established terminal through
+        // the first-run PIN creation flow again.
+        if (relinking) {
+          onComplete?.()
+          return
+        }
         setStep('create-pin')
         return
       }
@@ -126,10 +135,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   async function handleOpenSignup() {
-    const signupUrl = 'https://cervos.online/auth'
+    const signupUrl = `${WEB_URL}/auth?tab=signup&type=pharmacy`
     try {
-      // Tauri 2 opener plugin — fallback to window.open if not available
-      await invoke('plugin:opener|open_url', { url: signupUrl })
+      await open(signupUrl)
     } catch {
       window.open(signupUrl, '_blank')
     }
@@ -205,7 +213,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   Sign in with your pharmacy account to link this device to a branch.
                 </p>
                 <button onClick={() => setStep('link')} className={btnClass}>
-                  Get Started
+                  Sign In & Link This POS
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenSignup}
+                  className="w-full h-12 mt-3 border border-ink-deep/20 text-ink-deep font-label-md font-bold rounded-none flex items-center justify-center gap-2 hover:border-primary hover:text-primary transition-all"
+                >
+                  <span className="material-symbols-outlined text-[18px]">domain_add</span>
+                  Create Pharmacy Account
                 </button>
               </div>
             )}

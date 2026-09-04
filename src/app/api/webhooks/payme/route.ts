@@ -72,9 +72,12 @@ export async function POST(req: NextRequest) {
     if (payment.order_id) {
       const { error: orderError } = await supabase
         .from("orders")
-        .update({ status: "confirmed" })
+        .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
         .eq("id", payment.order_id)
-        .eq("status", "approved");
+        // Current orders retain `pending` after supplier approval and use
+        // supplier_approved_at as the approval signal; older rows use
+        // `approved`. A completed Payme payment must finalize either form.
+        .in("status", ["pending", "approved"]);
 
       if (orderError) {
         console.error(`[Payme Webhook] Failed to update order: ${orderError.message}`);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
-import { ensureLinked } from '../lib/sync'
+import { getAccessToken } from '../lib/sync'
 import { WEB_URL } from '../lib/web'
 
 interface MarketplaceProduct {
@@ -67,14 +67,13 @@ export default function Marketplace() {
         setConnectionsError('No branch linked. Please link your pharmacy branch in Settings.')
         return
       }
-      await ensureLinked()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const accessToken = await getAccessToken()
+      if (!accessToken) {
         setConnectionsError('Not signed in — sign in to view connection requests.')
         return
       }
       const res = await fetch(`${WEB_URL}/api/marketplace/connections?branchId=${encodeURIComponent(branchId)}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
       const json = await res.json() as { connections?: ConnectionRequest[]; error?: string }
       if (!res.ok) throw new Error(json.error || `Failed to load connections (${res.status})`)
@@ -88,15 +87,14 @@ export default function Marketplace() {
 
   async function respondToConnection(connectionId: string, status: 'approved' | 'rejected') {
     try {
-      await ensureLinked()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const accessToken = await getAccessToken()
+      if (!accessToken) {
         alert('Not signed in. Please sign in again.')
         return
       }
       const res = await fetch(`${WEB_URL}/api/marketplace/connections`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ connectionId, status }),
       })
       const json = await res.json() as { error?: string }
@@ -122,9 +120,8 @@ export default function Marketplace() {
     setLoading(true)
     setError(null)
     try {
-      await ensureLinked()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const accessToken = await getAccessToken()
+      if (!accessToken) {
         setError('Not signed in — sign in to browse supplier catalog.')
         setLoading(false)
         return
@@ -132,7 +129,7 @@ export default function Marketplace() {
 
       // Try web API first (works via Bearer token, bypasses RLS)
       const webRes = await fetch(`${WEB_URL}/api/marketplace/products`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
 
       if (webRes.ok) {
@@ -239,9 +236,8 @@ export default function Marketplace() {
       return
     }
 
-    await ensureLinked()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) {
+    const accessToken = await getAccessToken()
+    if (!accessToken) {
       alert('Not signed in. Please sign in again.')
       return
     }
@@ -262,7 +258,7 @@ export default function Marketplace() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           buyerBranchId: branchId,

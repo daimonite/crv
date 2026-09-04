@@ -454,7 +454,7 @@ export default function Settings() {
             {!stats.linked && (
               <div className="pt-2">
                 <Link
-                  to="/onboarding"
+                  to="/onboarding?relink=1"
                   className="flex items-center justify-center gap-2 py-2.5 rounded-md border border-outline-variant text-on-surface font-medium hover:bg-outline-variant/30 transition-colors"
                 >
                   <span className="material-symbols-outlined text-xl">link</span>

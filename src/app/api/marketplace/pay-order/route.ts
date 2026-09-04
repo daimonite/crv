@@ -1,13 +1,14 @@
 /**
  * @route POST /api/marketplace/pay-order
- * @description Pays for an existing marketplace order (status `pending`) using
- * the Payme mobile-money collection. Used by the pharmacy order detail and the
- * branch operator portal. On webhook completion the order is confirmed and the
- * supplier is paid out (see /api/webhooks/payme + lib/escrow.ts).
+ * @description Pays for a supplier-approved marketplace order using the Payme
+ * mobile-money collection. Pre-payment orders can be stored as `pending` or
+ * legacy `approved`; on webhook completion they are confirmed and the supplier
+ * is paid out (see /api/webhooks/payme + lib/escrow.ts).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getUserFromRequest } from "@/lib/api-auth";
+import { settleOrderPayout } from "@/lib/escrow";
 
 export async function POST(request: NextRequest) {
   const user = await getUserFromRequest(request);
@@ -40,10 +41,13 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
-  if (order.status !== "pending") {
-    return NextResponse.json({ error: "This order can only be paid while pending." }, { status: 409 });
+  if (order.status !== "pending" && order.status !== "approved") {
+    return NextResponse.json({ error: "This order is no longer awaiting payment." }, { status: 409 });
   }
-  if (!order.supplier_approved_at) {
+  // New orders remain `pending` and gain a timestamp when the supplier
+  // approves. Older orders use the explicit `approved` status instead, so
+  // either representation authorizes the pre-payment Payme collection.
+  if (order.status !== "approved" && !order.supplier_approved_at) {
     return NextResponse.json({ error: "This order is still waiting on the supplier to approve it. You can't pay until they do." }, { status: 403 });
   }
 
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
   const reference = `PAY-${order.order_reference}-${orderId.slice(0, 8)}`;
   const idempotencyKey = body.idempotencyKey || `${orderId}-${Date.now()}`;
 
-  const { error: payInsertError } = await service.from("payments").insert({
+  const { data: payment, error: payInsertError } = await service.from("payments").insert({
     account_id: account.id,
     order_id: orderId,
     reference,
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
     amount_tzs: total,
     msisdn: walletMsisdn,
     status: "pending",
-  });
+  }).select("id, reference, amount_tzs, account_id").single();
 
   if (payInsertError) {
     // Unique reference already exists → a payment for this order exists.
@@ -136,6 +140,21 @@ export async function POST(request: NextRequest) {
     status: paymeData?.payment_status === "COMPLETED" ? "completed" : "pending",
     completed_at: paymeData?.payment_status === "COMPLETED" ? new Date().toISOString() : null,
   }).eq("reference", reference);
+
+  // Sandbox collections can complete synchronously and may not send a later
+  // webhook. Finalize the same order/transaction path here in that case.
+  if (paymeData?.payment_status === "COMPLETED" && payment) {
+    await service
+      .from("orders")
+      .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
+      .eq("id", order.id)
+      .in("status", ["pending", "approved"]);
+
+    const settlement = await settleOrderPayout({ service, payment, order });
+    if (!settlement.ok) {
+      console.error(`[pay-order] Settlement failed for ${order.id}: ${settlement.message}`);
+    }
+  }
 
   return NextResponse.json({
     orderId,

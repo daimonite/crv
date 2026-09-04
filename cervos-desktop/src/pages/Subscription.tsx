@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { queryDb, executeDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
-import { ensureLinked, runSyncCycle } from '../lib/sync'
-import { invoke } from '@tauri-apps/api/core'
+import { ensureLinked, getAccessToken, runSyncCycle } from '../lib/sync'
+import { open } from '@tauri-apps/plugin-shell'
 import { WEB_URL } from '../lib/web'
 
 interface BranchInfo {
@@ -157,15 +157,20 @@ export default function Subscription() {
         [JSON.stringify(w)]
       )
 
-      await ensureLinked()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not signed in — sign in again.')
+      let accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Not signed in — sign in again.')
 
-      const res = await fetch(`${WEB_URL}/api/subscription/subscribe-branch`, {
+      const requestUpgrade = (token: string) => fetch(`${WEB_URL}/api/subscription/subscribe-branch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ branchId: branch.id, planId: plan.id, msisdn: w }),
       })
+      let res = await requestUpgrade(accessToken)
+      if (res.status === 401) {
+        accessToken = await getAccessToken(true)
+        if (!accessToken) throw new Error('Your web session has expired — sign in again.')
+        res = await requestUpgrade(accessToken)
+      }
       const json = (await res.json()) as { error?: string; message?: string }
       if (!res.ok) throw new Error(json.error || `Upgrade failed (${res.status})`)
 
@@ -180,11 +185,8 @@ export default function Subscription() {
   }
 
   async function manageOnWeb() {
-    // Vite/Tauri webviews can't reliably open a system browser via a plain
-    // <a target="_blank">; the rest of this app already routes external
-    // links through the opener plugin (see Onboarding's signup button).
     try {
-      await invoke('plugin:opener|open_url', { url: `${WEB_URL}/dashboard/billing` })
+      await open(`${WEB_URL}/dashboard/billing`)
     } catch {
       window.open(`${WEB_URL}/dashboard/billing`, '_blank')
     }
