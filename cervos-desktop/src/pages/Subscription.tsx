@@ -17,7 +17,7 @@ interface Plan {
   name: string
   price_monthly_tzs: number
   price_annual_tzs: number
-  max_stock_value_tzs: number | null
+  max_branches: number
   features: string[]
 }
 
@@ -33,7 +33,7 @@ function formatTzs(n: number): string {
 export default function Subscription() {
   const [branch, setBranch] = useState<BranchInfo | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
-  const [stockValue, setStockValue] = useState(0)
+  const [branchCount, setBranchCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [wallet, setWallet] = useState('')
@@ -66,15 +66,21 @@ export default function Subscription() {
         })
       }
 
-      // Real stock value: quantity x sale_price across this branch's locally
-      // synced batches. This is the actual metric the plans below are priced
-      // against — not a placeholder.
-      const stockRows = await queryDb('SELECT COALESCE(SUM(quantity * sale_price), 0) as total FROM batches')
-      setStockValue(Number(stockRows[0]?.total ?? 0))
+      const accountIdRow = await queryDb("SELECT value FROM app_settings WHERE key = 'account_id'")
+      if (accountIdRow.length > 0) {
+        const accountId = JSON.parse(accountIdRow[0].value) as string
+        const { count, error: branchCountError } = await supabase
+          .from('branches')
+          .select('id', { count: 'exact', head: true })
+          .eq('account_id', accountId)
+        if (branchCountError) throw branchCountError
+        setBranchCount(count ?? 0)
+      }
 
       const { data: planRows, error: planError } = await supabase
-        .from('branch_subscription_plans')
-        .select('id, name, price_monthly_tzs, price_annual_tzs, max_stock_value_tzs, features')
+        .from('subscription_plans')
+        .select('id, name, price_monthly_tzs, price_annual_tzs, max_branches, features')
+        .eq('audience', 'pharmacy')
         .order('price_monthly_tzs', { ascending: true })
       if (planError) throw planError
       setPlans((planRows ?? []) as Plan[])
@@ -94,7 +100,7 @@ export default function Subscription() {
 
   function suggestedPlanId(): string | null {
     if (plans.length === 0) return null
-    const fit = plans.find((p) => p.max_stock_value_tzs == null || stockValue <= p.max_stock_value_tzs)
+    const fit = plans.find((p) => branchCount <= p.max_branches)
     return (fit ?? plans[plans.length - 1]).id
   }
 
@@ -200,10 +206,10 @@ export default function Subscription() {
         </div>
 
         <div className="flex items-center gap-2 p-3 bg-outline-variant/20 rounded-lg mb-3">
-          <span className="material-symbols-outlined text-on-surface-variant">inventory_2</span>
+          <span className="material-symbols-outlined text-on-surface-variant">store</span>
           <div>
-            <p className="text-sm font-medium text-on-surface">Current stock value</p>
-            <p className="text-xs text-on-surface-variant">{formatTzs(stockValue)}</p>
+            <p className="text-sm font-medium text-on-surface">Branches on this account</p>
+            <p className="text-xs text-on-surface-variant">{branchCount}</p>
           </div>
         </div>
 
@@ -262,7 +268,7 @@ export default function Subscription() {
               <p className="font-headline text-lg font-bold text-on-surface">{plan.name}</p>
               <p className="text-2xl font-black text-on-surface my-2">{formatTzs(plan.price_monthly_tzs)}/mo</p>
               <p className="text-xs text-on-surface-variant mb-2">
-                {plan.max_stock_value_tzs ? `Up to ${formatTzs(plan.max_stock_value_tzs)} stock value` : 'Unlimited stock value'}
+                {`Up to ${plan.max_branches} branch${plan.max_branches === 1 ? '' : 'es'}`}
               </p>
               <ul className="space-y-1">
                 {(plan.features ?? []).map((f) => (

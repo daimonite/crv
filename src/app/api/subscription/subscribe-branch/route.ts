@@ -1,15 +1,13 @@
 /**
  * @route POST /api/subscription/subscribe-branch
- * @description Starts a POS subscription payment for a single branch — the
- * desktop app's plan, priced by that branch's stock value, distinct from the
- * pharmacy portal's account-level (network-size) subscription_plans. Body:
- * { branchId, planId, msisdn?, months? }. Called by the desktop app with a
- * Bearer token (see lib/api-auth.ts), not a cookie session.
+ * @description Starts an account-level pharmacy subscription payment from a
+ * POS device. `branchId` is used to confirm the device belongs to the signed
+ * in pharmacy; the selected plan is an account-level subscription_plans row.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/api-auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getBranchPlans, createBranchSubscriptionCheckout } from "@/lib/subscription";
+import { getPlans, createSubscriptionCheckout } from "@/lib/subscription";
 
 export async function POST(request: NextRequest) {
   const user = await getUserFromRequest(request);
@@ -35,14 +33,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Branch not found or access denied." }, { status: 403 });
   }
 
-  const { data: plans, error: plansError } = await getBranchPlans(service, body.planId);
+  const { data: plans, error: plansError } = await getPlans(service, "pharmacy", body.planId);
   if (plansError) return NextResponse.json({ error: plansError }, { status: 500 });
   const plan = plans?.[0];
   if (!plan) return NextResponse.json({ error: "Plan not found." }, { status: 404 });
 
-  const result = await createBranchSubscriptionCheckout({
+  const result = await createSubscriptionCheckout({
     service,
-    branchId: body.branchId,
+    accountId: account.id,
     plan,
     months: body.months ?? 1,
     msisdn: body.msisdn,

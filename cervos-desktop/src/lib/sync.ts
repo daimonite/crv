@@ -178,17 +178,29 @@ export async function getLinkStatus(): Promise<LinkStatus> {
  * pulls that branch's real name/address down for local display. Never
  * writes a new row to `branches`; the pharmacy portal is the only place a
  * branch gets created.
+ *
+ * Claims the branch exclusively via a conditional UPDATE so two devices
+ * racing to link the same branch cannot both succeed.
  */
 export async function linkToExistingBranch(branchId: string): Promise<void> {
   if (!Ie) throw new Error('Not linked to Supabase — please sign in again.')
 
-  const { data: branch, error } = await Ie
+  const { data: branch, error: claimError } = await Ie
     .from('branches')
-    .select('id, name, address, account_id')
+    .update({ pos_activated_at: new Date().toISOString() })
     .eq('id', branchId)
+    .is('pos_activated_at', null)
+    .select('id, name, address, account_id')
     .maybeSingle()
 
-  if (error || !branch) throw new Error('That branch could not be found — it may have been removed from the portal.')
+  if (claimError) throw new Error(claimError.message)
+  if (!branch) {
+    // This read is only for the operator-facing error. The conditional update
+    // above is the atomic claim, so this cannot make the claim racy.
+    const { data: existing } = await Ie.from('branches').select('id').eq('id', branchId).maybeSingle()
+    if (!existing) throw new Error('That branch could not be found — it may have been removed from the portal.')
+    throw new Error('This branch already has an activated POS device on another machine — deactivate it first, or pick a different branch.')
+  }
 
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
