@@ -33,7 +33,32 @@ function mockUserFromRequest(request: NextRequest) {
   return { user_metadata: { account_type: role === "supplier" ? "supplier" : "pharmacy" } };
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // The desktop POS app calls these API routes from a Tauri webview (different origin).
+  // Browsers require explicit CORS headers and OPTIONS preflight response.
+  const isCorsRoute =
+    pathname.startsWith("/api/marketplace") ||
+    pathname.startsWith("/api/subscription");
+
+  if (isCorsRoute) {
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, { status: 204, headers: corsHeaders });
+    }
+    const response = NextResponse.next();
+    for (const [key, value] of Object.entries(corsHeaders)) {
+      response.headers.set(key, value);
+    }
+    return response;
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -67,7 +92,6 @@ export async function proxy(request: NextRequest) {
     ? { data: { user: mockUserFromRequest(request) } }
     : await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
 
   // HQ guard — validates derived session token, not the raw secret
   if (pathname.startsWith("/hq")) {
