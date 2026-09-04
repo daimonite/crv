@@ -1,40 +1,14 @@
-﻿import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { executeDb } from '../lib/database'
-import { signIn, linkBranch } from '../lib/sync'
+import { signIn, getLinkStatus, linkToExistingBranch, type RemoteBranch } from '../lib/sync'
+import { queryDb } from '../lib/database'
 import { useAuth } from '../lib/hooks'
 import { invoke } from '@tauri-apps/api/core'
 
-type OnboardingStep = 'welcome' | 'details' | 'link' | 'create-pin' | 'done'
-
-interface CentreDetails {
-  name: string
-  address: string
-  phone: string
-  email: string
-}
+type OnboardingStep = 'welcome' | 'link' | 'select-branch' | 'create-pin' | 'done'
 
 interface OnboardingProps {
   onComplete?: () => void
-}
-
-async function saveCentreDetails(details: CentreDetails) {
-  await executeDb(
-    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['centre_name', JSON.stringify(details.name.trim())]
-  )
-  await executeDb(
-    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['centre_address', JSON.stringify(details.address.trim())]
-  )
-  await executeDb(
-    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['centre_phone', JSON.stringify(details.phone.trim())]
-  )
-  await executeDb(
-    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['centre_email', JSON.stringify(details.email.trim())]
-  )
 }
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
@@ -42,29 +16,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const { setOperator } = useAuth()
 
   const [step, setStep] = useState<OnboardingStep>('welcome')
-  const [details, setDetails] = useState<CentreDetails>({ name: '', address: '', phone: '', email: '' })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [branches, setBranches] = useState<RemoteBranch[]>([])
+  const [linkedBranch, setLinkedBranch] = useState<{ name: string; address: string } | null>(null)
 
   const inputClass = 'w-full h-12 px-4 bg-surface-base border border-ink-deep/20 rounded-none text-body-md text-ink-deep focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-text-muted'
   const btnClass = 'w-full h-12 bg-primary text-white rounded-none font-label-md font-bold flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-60'
-
-  async function handleDetailsSubmit() {
-    if (!details.name.trim() || !details.address.trim()) return
-    setIsLoading(true)
-    setError(null)
-    try {
-      await saveCentreDetails(details)
-      setStep('link')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save details')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -72,14 +33,60 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setError(null)
     try {
       await signIn(email.trim(), password)
-      await linkBranch()
-      setStep('create-pin')
+
+      // Real branches only — this never invents a pharmacy location. If the
+      // account has none yet, the operator needs to create one in the web
+      // portal first; a POS device is not where a branch gets created.
+      const status = await getLinkStatus()
+      if (status.alreadyLinked) {
+        setStep('create-pin')
+        return
+      }
+      if (status.branches.length === 0) {
+        setError('This account has no branches yet. Create one at cervos.online/dashboard/branches first, then sign in here again.')
+        return
+      }
+      if (status.branches.length === 1) {
+        await linkToExistingBranch(status.branches[0].id)
+        setStep('create-pin')
+        return
+      }
+      setBranches(status.branches)
+      setStep('select-branch')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid email or password')
     } finally {
       setIsLoading(false)
     }
   }
+
+  async function handleSelectBranch(branchId: string) {
+    setIsLoading(true)
+    setError(null)
+    try {
+      await linkToExistingBranch(branchId)
+      setStep('create-pin')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to link this branch')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // Pull the real linked branch's name/address (written by
+    // linkToExistingBranch) for display on the final confirmation screen —
+    // never invented, always whatever this device actually got linked to.
+    if (step !== 'create-pin' && step !== 'done') return
+    ;(async () => {
+      const nameRows = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
+      const addrRows = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_address'")
+      setLinkedBranch({
+        name: nameRows.length > 0 ? JSON.parse(nameRows[0].value) : 'Unknown branch',
+        address: addrRows.length > 0 ? JSON.parse(addrRows[0].value) : '',
+      })
+    })()
+  }, [step])
 
   async function handleCreatePin(e: React.FormEvent) {
     e.preventDefault()
@@ -92,20 +99,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     try {
       const { createOperator } = await import('../lib/queries')
       const { queryDb: dbQuery } = await import('../lib/database')
-      const { generateId } = await import('../lib/database')
 
       const branchResult = await dbQuery("SELECT value FROM app_settings WHERE key = 'branch_id'")
-      let branchId: string
-      if (branchResult.length > 0) {
-        branchId = JSON.parse(branchResult[0].value) as string
-      } else {
-        branchId = generateId()
-        const { executeDb } = await import('../lib/database')
-        await executeDb(
-          `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-          ['branch_id', JSON.stringify(branchId)]
-        )
+      if (branchResult.length === 0) {
+        // Should be unreachable given the flow above, but fail loudly rather
+        // than fabricating a random branch_id disconnected from any real
+        // pharmacy portal branch (that was the previous behavior here).
+        throw new Error('No branch linked to this device — go back and sign in again.')
       }
+      const branchId = JSON.parse(branchResult[0].value) as string
 
       const op = await createOperator({
         branch_id: branchId,
@@ -200,55 +202,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 </div>
                 <h1 className="font-headline-lg text-headline-lg text-ink-deep mb-2">Welcome to Cervos POS</h1>
                 <p className="font-body-md text-body-md text-on-surface-variant mb-8">
-                  Set up your pharmacy in a few steps.
+                  Sign in with your pharmacy account to link this device to a branch.
                 </p>
-                <button onClick={() => setStep('details')} className={btnClass}>
+                <button onClick={() => setStep('link')} className={btnClass}>
                   Get Started
                 </button>
               </div>
             )}
 
-            {step === 'details' && (
-              <form onSubmit={(e) => { e.preventDefault(); handleDetailsSubmit(); }} className="flex flex-col gap-4">
+            {step === 'select-branch' && (
+              <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <button type="button" onClick={() => setStep('welcome')} className="text-on-surface-variant hover:text-primary">
+                  <button type="button" onClick={() => setStep('link')} className="text-on-surface-variant hover:text-primary">
                     <span className="material-symbols-outlined">arrow_back</span>
                   </button>
-                  <h2 className="font-headline-md text-headline-md text-ink-deep">Centre Details</h2>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">Select Branch</h2>
                 </div>
 
-                <input
-                  type="text"
-                  value={details.name}
-                  onChange={(e) => setDetails({ ...details, name: e.target.value })}
-                  placeholder="Centre name (e.g. Green Cross Pharmacy)"
-                  required
-                  className={inputClass}
-                />
-                <input
-                  type="text"
-                  value={details.address}
-                  onChange={(e) => setDetails({ ...details, address: e.target.value })}
-                  placeholder="Address"
-                  required
-                  className={inputClass}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="tel"
-                    value={details.phone}
-                    onChange={(e) => setDetails({ ...details, phone: e.target.value })}
-                    placeholder="Phone"
-                    className={inputClass}
-                  />
-                  <input
-                    type="email"
-                    value={details.email}
-                    onChange={(e) => setDetails({ ...details, email: e.target.value })}
-                    placeholder="Email"
-                    className={inputClass}
-                  />
-                </div>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  This account has multiple branches. Which one is this device for?
+                </p>
 
                 {error && (
                   <div className="p-3 bg-error/10 border border-error/20 rounded text-error text-sm">
@@ -256,16 +229,27 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   </div>
                 )}
 
-                <button type="submit" disabled={!details.name.trim() || !details.address.trim() || isLoading} className={btnClass}>
-                  {isLoading ? 'Saving...' : 'Continue'}
-                </button>
-              </form>
+                <div className="flex flex-col gap-2">
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleSelectBranch(b.id)}
+                      className="w-full text-left px-4 py-3 border border-ink-deep/20 hover:border-primary hover:bg-primary/5 transition-all disabled:opacity-60"
+                    >
+                      <p className="font-label-md font-bold text-ink-deep">{b.name}</p>
+                      {b.address && <p className="text-sm text-on-surface-variant">{b.address}</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {step === 'link' && (
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <button type="button" onClick={() => setStep('details')} className="text-on-surface-variant hover:text-primary">
+                  <button type="button" onClick={() => setStep('welcome')} className="text-on-surface-variant hover:text-primary">
                     <span className="material-symbols-outlined">arrow_back</span>
                   </button>
                   <h2 className="font-headline-md text-headline-md text-ink-deep">Link Admin Account</h2>
@@ -366,14 +350,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 </div>
                 <h2 className="font-headline-md text-headline-md text-ink-deep mb-2">You're All Set!</h2>
                 <p className="font-body-md text-body-md text-on-surface-variant mb-6">
-                  Your centre is configured and ready.
+                  This device is linked to your branch and ready.
                 </p>
 
                 <div className="bg-surface-container rounded p-4 text-left text-sm mb-6">
-                  <h3 className="font-medium text-ink-deep mb-2">Centre</h3>
+                  <h3 className="font-medium text-ink-deep mb-2">Branch</h3>
                   <div className="space-y-1 text-on-surface-variant">
-                    <p><span className="text-text-muted">Name:</span> {details.name}</p>
-                    <p><span className="text-text-muted">Address:</span> {details.address}</p>
+                    <p><span className="text-text-muted">Name:</span> {linkedBranch?.name ?? '—'}</p>
+                    <p><span className="text-text-muted">Address:</span> {linkedBranch?.address || '—'}</p>
                   </div>
                 </div>
 

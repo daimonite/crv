@@ -48,8 +48,31 @@ export async function initDb(): Promise<void> {
 function saveDb(): void {
   if (!db) return
   const data = db.export()
-  const binary = String.fromCharCode(...data)
-  localStorage.setItem(DB_KEY, btoa(binary))
+  // Converting the whole exported DB to a binary string via
+  // String.fromCharCode(...data) blows the call stack once the array gets
+  // large enough — spreading a big typed array into individual function
+  // arguments hits the JS engine's argument-count limit ("Maximum call
+  // stack size exceeded"). This grows with real usage (more products,
+  // batches, orders, notifications), so it will eventually trip even if it
+  // didn't before. Converting in fixed-size chunks avoids the limit
+  // entirely regardless of how large the database gets.
+  const CHUNK_SIZE = 0x8000 // 32768 bytes per chunk
+  let binary = ''
+  for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode(...data.subarray(i, i + CHUNK_SIZE))
+  }
+  try {
+    localStorage.setItem(DB_KEY, btoa(binary))
+  } catch (err) {
+    // localStorage has a hard per-origin quota (commonly 5-10MB). The whole
+    // SQLite DB is stored here as base64, so it can eventually exceed that
+    // quota as real data accumulates over time — that's a separate,
+    // larger problem (moving persistence to an actual file via
+    // @tauri-apps/plugin-fs, already a project dependency, instead of
+    // localStorage) that should be addressed before this becomes a
+    // recurring failure, not patched further here.
+    console.error('saveDb: localStorage write failed (possibly over quota):', err)
+  }
 }
 
 async function runMigrations(): Promise<void> {

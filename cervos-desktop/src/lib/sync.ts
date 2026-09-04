@@ -1,4 +1,4 @@
-﻿import { supabase, isConfigured } from './supabase'
+import { supabase, isConfigured } from './supabase'
 import { queryDb, executeDb, generateId, nowIso } from './database'
 import { useSyncStore } from './store'
 import type { DashboardStats } from '../types'
@@ -89,7 +89,31 @@ export async function signIn(
   }
 }
 
-export async function provisionBranch(): Promise<void> {
+export interface RemoteBranch {
+  id: string
+  name: string
+  address: string | null
+}
+
+export interface LinkStatus {
+  // true only when this device already has a valid, still-existing branch_id
+  // saved locally — in that case there's nothing left to do.
+  alreadyLinked: boolean
+  // The signed-in account's REAL branches, as they exist in the pharmacy
+  // portal right now — never fabricated. Onboarding presents these for the
+  // operator to pick from; it must never invent a new branch from typed text.
+  branches: RemoteBranch[]
+}
+
+/**
+ * Call after signIn(). Looks at the real pharmacy account behind the
+ * credentials just used and returns its actual branches from Supabase, so
+ * the caller can let the operator pick which existing branch this specific
+ * POS terminal belongs to. This deliberately does NOT create anything —
+ * a POS device should never be able to invent a pharmacy location that
+ * doesn't already exist in the web portal.
+ */
+export async function getLinkStatus(): Promise<LinkStatus> {
   if (!Ie) throw new Error('Not linked to Supabase — please sign in again.')
   const { data: user } = await Ie.auth.getUser()
   if (!user.user) throw new Error('No authenticated user found. Please sign in again.')
@@ -102,57 +126,74 @@ export async function provisionBranch(): Promise<void> {
 
   if (!account) throw new Error('No pharmacy account found for this login. Create one at cervos.online/auth first.')
 
-  // Avoid creating duplicate branch if this device already provisioned
+  // Already provisioned on this device, and that branch still exists remotely?
   const existingBranch = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
   if (existingBranch.length > 0) {
     try {
       const existingId = JSON.parse(existingBranch[0].value) as string
       const { data: existing } = await Ie.from('branches').select('id').eq('id', existingId).maybeSingle()
-      if (existing) return // already provisioned
-    } catch { /* ignore parse error */ }
+      if (existing) return { alreadyLinked: true, branches: [] }
+    } catch { /* ignore parse error, fall through to re-link */ }
   }
 
-  const nameResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
-  const latResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_lat'")
-  const lngResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_lng'")
-  const addressResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_address'")
-  const phoneResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_phone'")
-  const emailResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_email'")
+  const { data: branches, error } = await Ie
+    .from('branches')
+    .select('id, name, address')
+    .eq('account_id', account.id)
+    .order('name')
 
-  const centreName = nameResult.length > 0 ? JSON.parse(nameResult[0].value) : 'My Pharmacy'
-  const lat = latResult.length > 0 && latResult[0].value !== 'null' ? JSON.parse(latResult[0].value) : null
-  const lng = lngResult.length > 0 && lngResult[0].value !== 'null' ? JSON.parse(lngResult[0].value) : null
-  const address = addressResult.length > 0 ? JSON.parse(addressResult[0].value) : ''
-  const phone = phoneResult.length > 0 ? JSON.parse(phoneResult[0].value) : ''
-  const email = emailResult.length > 0 ? JSON.parse(emailResult[0].value) : ''
+  if (error) throw new Error(error.message)
 
-  const branchId = generateId()
-  const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString()
+  return { alreadyLinked: false, branches: (branches ?? []) as RemoteBranch[] }
+}
 
-  const { error } = await Ie.from('branches').insert({
-    id: branchId,
-    account_id: account.id,
-    name: centreName,
-    address: address,
-    phone: phone,
-    email: email,
-    lat: lat,
-    lng: lng,
-    subscription_status: 'trial',
-    trial_ends_at: trialEndsAt,
-  })
+/**
+ * Links this device to a specific EXISTING branch the operator picked —
+ * pulls that branch's real name/address down for local display. Never
+ * writes a new row to `branches`; the pharmacy portal is the only place a
+ * branch gets created.
+ */
+export async function linkToExistingBranch(branchId: string): Promise<void> {
+  if (!Ie) throw new Error('Not linked to Supabase — please sign in again.')
 
-  if (error) throw new Error(`Failed to create branch: ${error.message}`)
+  const { data: branch, error } = await Ie
+    .from('branches')
+    .select('id, name, address, account_id')
+    .eq('id', branchId)
+    .maybeSingle()
+
+  if (error || !branch) throw new Error('That branch could not be found — it may have been removed from the portal.')
 
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['branch_id', JSON.stringify(branchId)]
+    ['branch_id', JSON.stringify(branch.id)]
   )
-
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ['account_id', JSON.stringify(account.id)]
+    ['account_id', JSON.stringify(branch.account_id)]
   )
+  await executeDb(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ['centre_name', JSON.stringify(branch.name)]
+  )
+  await executeDb(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ['centre_address', JSON.stringify(branch.address ?? '')]
+  )
+}
+
+/**
+ * Backwards-compatibility helper for any components still calling linkBranch().
+ * Links to the first branch found if not already linked.
+ */
+export async function linkBranch(): Promise<void> {
+  const isLinked = await ensureLinked()
+  if (isLinked) {
+    const status = await getLinkStatus()
+    if (!status.alreadyLinked && status.branches.length > 0) {
+      await linkToExistingBranch(status.branches[0].id)
+    }
+  }
 }
 
 export async function signOut(): Promise<void> {
@@ -188,13 +229,6 @@ export async function hashString(n: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-export async function linkBranch(): Promise<void> {
-  const isLinked = await ensureLinked()
-  if (isLinked) {
-    await provisionBranch()
-  }
 }
 
 export async function queueForSync(tableName: string, rowId: string, operation: string, payload: any): Promise<void> {
@@ -262,9 +296,9 @@ export async function checkSubscriptionBlocked(): Promise<{ blocked: boolean; re
   return { blocked: false }
 }
 
-// â”€â”€â”€ Push (upload local queue to Supabase) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Push (upload local queue to Supabase) ──────────────────────────────────
 // Batched per table+operation so a cycle makes at most a handful of requests
-// instead of one per row â€” important on Supabase free tier.
+// instead of one per row — important on Supabase free tier.
 
 export async function processSyncQueue(): Promise<{ uploaded: number; failed: number }> {
   return bulkPush()
@@ -316,7 +350,7 @@ async function bulkPush(): Promise<{ uploaded: number; failed: number }> {
   return { uploaded, failed }
 }
 
-// â”€â”€â”€ Pull (download delta from Supabase into local SQLite) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Pull (download delta from Supabase into local SQLite) ──────────────────
 // Done directly against the authed client because the server /api/sync route
 // authenticates via session cookies, which the desktop fetch cannot supply.
 
@@ -436,7 +470,7 @@ async function applyPulledData(data: any): Promise<void> {
   }
 }
 
-// â”€â”€â”€ Full sync cycle (pull + push + subscription + commands) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Full sync cycle (pull + push + subscription + commands) ─────────────────
 
 let _autoTimer: any = null
 let _cleanupAuto: (() => void) | null = null
@@ -557,7 +591,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
   }
 }
 
-// â”€â”€â”€ Auto-sync scheduler (free-tier friendly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Auto-sync scheduler (free-tier friendly) ───────────────────────────────
 // - One cycle at a time (no overlap)
 // - Base interval 5 min; on failure, exponential backoff capped at 30 min
 // - Also fires on tab focus / network reconnect (debounced by the single-flight guard)
@@ -570,7 +604,7 @@ export function startAutoSync(): void {
     try {
       await runSyncCycle()
     } catch {
-      /* swallow â€” backoff handles retries */
+      /* swallow — backoff handles retries */
     }
     const next = _failStreak > 0
       ? Math.min(BASE_INTERVAL * Math.pow(2, _failStreak), MAX_BACKOFF)
