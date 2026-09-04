@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
 import { ensureLinked } from '../lib/sync'
+import { WEB_URL } from '../lib/web'
 
 interface MarketplaceProduct {
   id: string
@@ -22,11 +23,6 @@ interface CartItem {
   product: MarketplaceProduct
   quantity: number
 }
-
-const WEB_URL =
-  (import.meta.env.VITE_WEB_URL as string | undefined) ||
-  (import.meta.env.VITE_APP_URL as string | undefined) ||
-  'https://cervos.online'
 
 interface ConnectionRequest {
   id: string

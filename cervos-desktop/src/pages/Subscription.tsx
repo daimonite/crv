@@ -3,6 +3,7 @@ import { queryDb, executeDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
 import { ensureLinked, runSyncCycle } from '../lib/sync'
 import { invoke } from '@tauri-apps/api/core'
+import { WEB_URL } from '../lib/web'
 
 interface BranchInfo {
   id: string
@@ -20,11 +21,6 @@ interface Plan {
   max_branches: number
   features: string[]
 }
-
-const WEB_URL =
-  (import.meta.env.VITE_WEB_URL as string | undefined) ||
-  (import.meta.env.VITE_APP_URL as string | undefined) ||
-  'https://cervos.online'
 
 function formatTzs(n: number): string {
   return `TZS ${Math.round(n).toLocaleString()}`

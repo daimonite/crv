@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
 import { ensureLinked, runSyncCycle } from '../lib/sync'
-
-const WEB_URL =
-  (import.meta.env.VITE_WEB_URL as string | undefined) ||
-  (import.meta.env.VITE_APP_URL as string | undefined) ||
-  'https://cervos.online'
+import { WEB_URL } from '../lib/web'
 
 interface LocalOrder {
   id: string
