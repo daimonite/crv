@@ -13,10 +13,15 @@ interface LocalOrder {
   order_reference: string
   supplier_name: string
   currency: string
+  // The live backend keeps status = 'pending' until payment succeeds — it
+  // never actually sets 'approved'. Whether the supplier has approved is
+  // tracked separately via supplier_approved_at. 'approved' is kept in this
+  // union only because the DB's CHECK constraint still permits it (in case
+  // anything ever does set it), not because the real flow produces it.
   status: 'pending' | 'approved' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
   note: string | null
   placed_at: string | null
-  approved_at: string | null
+  supplier_approved_at: string | null
   confirmed_at: string | null
   shipped_at: string | null
   delivered_at: string | null
@@ -48,6 +53,19 @@ const STATUS_LABEL: Record<LocalOrder['status'], string> = {
   shipped: 'Shipped',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
+}
+
+/**
+ * The real backend keeps status = 'pending' both before AND after supplier
+ * approval — it only ever flips to 'confirmed' once payment succeeds.
+ * Whether the supplier has approved is tracked separately via
+ * supplier_approved_at. This derives the badge/label/pay-eligibility that
+ * actually matches that behavior, instead of relying on a raw 'approved'
+ * status value the backend doesn't produce.
+ */
+function effectiveStatus(order: LocalOrder): LocalOrder['status'] {
+  if (order.status === 'pending' && order.supplier_approved_at) return 'approved'
+  return order.status
 }
 
 export default function Orders() {
@@ -183,8 +201,8 @@ export default function Orders() {
                     <span className="font-semibold text-on-surface">
                       {order.currency} {total.toLocaleString()}
                     </span>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[order.status]}`}>
-                      {STATUS_LABEL[order.status]}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[effectiveStatus(order)]}`}>
+                      {STATUS_LABEL[effectiveStatus(order)]}
                     </span>
                     <span className="material-symbols-outlined text-on-surface-variant">
                       {isExpanded ? 'expand_less' : 'expand_more'}
@@ -203,13 +221,13 @@ export default function Orders() {
                       ))}
                     </ul>
 
-                    {order.status === 'pending' && (
+                    {order.status === 'pending' && !order.supplier_approved_at && (
                       <p className="text-sm text-on-surface-variant">
                         Waiting for {order.supplier_name} to approve this order before it can be paid.
                       </p>
                     )}
 
-                    {order.status === 'approved' && (
+                    {effectiveStatus(order) === 'approved' && (
                       <div className="flex gap-2 pt-2">
                         <input
                           value={payWallet}

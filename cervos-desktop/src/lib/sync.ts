@@ -438,7 +438,7 @@ async function applyPulledData(data: any): Promise<void> {
       status: o.status,
       note: o.note ?? null,
       placed_at: o.placed_at ?? null,
-      approved_at: o.approved_at ?? null,
+      supplier_approved_at: o.supplier_approved_at ?? null,
       confirmed_at: o.confirmed_at ?? null,
       shipped_at: o.shipped_at ?? null,
       delivered_at: o.delivered_at ?? null,
@@ -514,7 +514,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
       // shipped/delivered) bump updated_at web-side, so this is a proper
       // incremental delta, not a full re-pull every cycle.
       Ie.from('orders')
-        .select('id, order_reference, currency, status, note, placed_at, approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at, updated_at, accounts!seller_id(name)')
+        .select('id, order_reference, currency, status, note, placed_at, supplier_approved_at, confirmed_at, shipped_at, delivered_at, cancelled_at, updated_at, accounts!seller_id(name)')
         .eq('buyer_branch_id', branchId)
         .gt('updated_at', since),
     ])

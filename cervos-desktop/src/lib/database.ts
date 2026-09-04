@@ -250,7 +250,6 @@ async function runMigrations(): Promise<void> {
       status TEXT DEFAULT 'pending',
       note TEXT,
       placed_at TEXT,
-      approved_at TEXT,
       confirmed_at TEXT,
       shipped_at TEXT,
       delivered_at TEXT,
@@ -298,6 +297,12 @@ async function runMigrations(): Promise<void> {
   addColumn('products', 'default_sale_price', 'REAL')
   addColumn('batches', 'batch_number', 'TEXT')
   addColumn('batches', 'updated_at', 'TEXT')
+  // Renamed from approved_at to match the web app's actual column
+  // (supplier_approved_at) — kept as an ADD rather than a rename since
+  // SQLite's ALTER TABLE RENAME COLUMN support varies, and devices that
+  // already created this table with the old schema need this column added,
+  // not swapped.
+  addColumn('orders', 'supplier_approved_at', 'TEXT')
   addColumn('products', 'low_stock_threshold', 'INTEGER DEFAULT 10')
   addColumn('products', 'notify_threshold', 'INTEGER DEFAULT 5')
 }
