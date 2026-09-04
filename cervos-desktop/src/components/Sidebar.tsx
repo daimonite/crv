@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
 import { useI18nStore, t } from '../lib/i18n'
+import { signOut } from '../lib/sync'
 import { LogoMark } from './Logo'
 
 const baseNavItems = [
@@ -22,8 +23,18 @@ const adminNavItems = [
 ]
 
 export default function Sidebar() {
-  const { currentOperator, isAdmin } = useAuthStore()
+  const { currentOperator, isAdmin, logout } = useAuthStore()
   const locale = useI18nStore((s) => s.locale)
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    // Same real sign-out Settings already does (Supabase session + local
+    // operator session) — just made reachable from one click instead of
+    // being buried a page deep.
+    await signOut()
+    logout()
+    navigate('/login')
+  }
 
   return (
     <aside key={locale} className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0 overflow-hidden">
@@ -82,9 +93,18 @@ export default function Sidebar() {
 
       {currentOperator && (
         <div className="p-3 border-t border-outline-variant shrink-0 bg-surface-base">
-          <div className="bg-primary/10 rounded-lg p-3">
-            <p className="text-xs font-semibold text-primary truncate">{currentOperator.name}</p>
-            <p className="text-xs text-on-surface-variant mt-0.5 capitalize">{currentOperator.role}</p>
+          <div className="bg-primary/10 rounded-lg p-3 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-primary truncate">{currentOperator.name}</p>
+              <p className="text-xs text-on-surface-variant mt-0.5 capitalize">{currentOperator.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              title={t('settings.signOut')}
+              className="shrink-0 p-1.5 rounded-md text-primary hover:bg-primary/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">logout</span>
+            </button>
           </div>
         </div>
       )}
