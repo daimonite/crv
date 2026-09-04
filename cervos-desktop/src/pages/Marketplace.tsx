@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
+import { ensureLinked } from '../lib/sync'
 
 interface MarketplaceProduct {
   id: string
@@ -70,6 +71,7 @@ export default function Marketplace() {
         setConnectionsError('No branch linked. Please link your pharmacy branch in Settings.')
         return
       }
+      await ensureLinked()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         setConnectionsError('Not signed in — sign in to view connection requests.')
@@ -90,6 +92,7 @@ export default function Marketplace() {
 
   async function respondToConnection(connectionId: string, status: 'approved' | 'rejected') {
     try {
+      await ensureLinked()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         alert('Not signed in. Please sign in again.')
@@ -123,6 +126,7 @@ export default function Marketplace() {
     setLoading(true)
     setError(null)
     try {
+      await ensureLinked()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         setError('Not signed in — sign in to browse supplier catalog.')
@@ -239,6 +243,7 @@ export default function Marketplace() {
       return
     }
 
+    await ensureLinked()
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) {
       alert('Not signed in. Please sign in again.')

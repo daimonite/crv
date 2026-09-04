@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { queryDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
-import { runSyncCycle } from '../lib/sync'
+import { ensureLinked, runSyncCycle } from '../lib/sync'
 
 const WEB_URL =
   (import.meta.env.VITE_WEB_URL as string | undefined) ||
@@ -129,6 +129,7 @@ export default function Orders() {
     }
     setPayBusy(order.id)
     try {
+      await ensureLinked()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in — sign in again.')
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { queryDb, executeDb } from '../lib/database'
 import { supabase } from '../lib/supabase'
-import { runSyncCycle } from '../lib/sync'
+import { ensureLinked, runSyncCycle } from '../lib/sync'
 import { invoke } from '@tauri-apps/api/core'
 
 interface BranchInfo {
@@ -34,6 +34,8 @@ export default function Subscription() {
   const [branch, setBranch] = useState<BranchInfo | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
   const [branchCount, setBranchCount] = useState(0)
+  const [accountName, setAccountName] = useState<string | null>(null)
+  const [branchName, setBranchName] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [wallet, setWallet] = useState('')
@@ -44,6 +46,7 @@ export default function Subscription() {
     setIsLoading(true)
     setError(null)
     try {
+      await ensureLinked()
       const bidRow = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
       if (bidRow.length === 0) {
         setIsLoading(false)
@@ -69,6 +72,25 @@ export default function Subscription() {
       const accountIdRow = await queryDb("SELECT value FROM app_settings WHERE key = 'account_id'")
       if (accountIdRow.length > 0) {
         const accountId = JSON.parse(accountIdRow[0].value) as string
+        const nameRow = await queryDb("SELECT value FROM app_settings WHERE key = 'account_name'")
+        if (nameRow.length > 0) setAccountName(JSON.parse(nameRow[0].value) as string)
+        const branchNameRow = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
+        if (branchNameRow.length > 0) setBranchName(JSON.parse(branchNameRow[0].value) as string)
+
+        const { data: account, error: accountError } = await supabase
+          .from('accounts')
+          .select('name')
+          .eq('id', accountId)
+          .maybeSingle()
+        if (accountError) throw accountError
+        if (account?.name) {
+          setAccountName(account.name)
+          await executeDb(
+            `INSERT INTO app_settings (key, value) VALUES ('account_name', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+            [JSON.stringify(account.name)]
+          )
+        }
+
         const { count, error: branchCountError } = await supabase
           .from('branches')
           .select('id', { count: 'exact', head: true })
@@ -139,6 +161,7 @@ export default function Subscription() {
         [JSON.stringify(w)]
       )
 
+      await ensureLinked()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in — sign in again.')
 
@@ -188,7 +211,7 @@ export default function Subscription() {
     <div className="p-6 max-w-3xl">
       <h1 className="font-headline text-2xl font-black text-on-surface mb-2">POS Subscription</h1>
       <p className="text-sm text-on-surface-variant mb-6">
-        Priced by this branch's current stock value — separate from the pharmacy portal's network-wide plan.
+        Manage the pharmacy account plan that covers this POS branch.
       </p>
 
       {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{error}</div>}
@@ -210,6 +233,16 @@ export default function Subscription() {
           <div>
             <p className="text-sm font-medium text-on-surface">Branches on this account</p>
             <p className="text-xs text-on-surface-variant">{branchCount}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg mb-3">
+          <span className="material-symbols-outlined text-primary">domain</span>
+          <div>
+            <p className="text-sm font-medium text-on-surface">Linked pharmacy account</p>
+            <p className="text-xs text-on-surface-variant">
+              {accountName ?? 'Account name unavailable'}{branchName ? ` · Branch: ${branchName}` : ''}
+            </p>
           </div>
         </div>
 
@@ -262,7 +295,7 @@ export default function Subscription() {
             >
               {isSuggested && (
                 <span className="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold uppercase tracking-wide">
-                  Fits your stock
+                  Fits your account
                 </span>
               )}
               <p className="font-headline text-lg font-bold text-on-surface">{plan.name}</p>

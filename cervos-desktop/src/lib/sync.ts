@@ -58,6 +58,11 @@ function isPermanentSessionError(error: any): boolean {
 
 async function restoreLinkedSession(): Promise<boolean> {
   if (!isConfigured) return false
+  if (Ie) {
+    const { data } = await Ie.auth.getSession()
+    if (data.session) return true
+    Ie = null
+  }
   const storedSession = await loadSession()
   if (storedSession?.access_token && storedSession?.refresh_token) {
     Ie = supabase
@@ -202,6 +207,14 @@ export async function linkToExistingBranch(branchId: string): Promise<void> {
     throw new Error('This branch already has an activated POS device on another machine — deactivate it first, or pick a different branch.')
   }
 
+  // Keep a human-readable account label with the local branch mapping so the
+  // POS can make its ownership clear even while offline.
+  const { data: account } = await Ie
+    .from('accounts')
+    .select('name')
+    .eq('id', branch.account_id)
+    .maybeSingle()
+
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['branch_id', JSON.stringify(branch.id)]
@@ -210,6 +223,12 @@ export async function linkToExistingBranch(branchId: string): Promise<void> {
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['account_id', JSON.stringify(branch.account_id)]
   )
+  if (account?.name) {
+    await executeDb(
+      `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ['account_name', JSON.stringify(account.name)]
+    )
+  }
   await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_name', JSON.stringify(branch.name)]
