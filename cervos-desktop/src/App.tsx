@@ -18,7 +18,7 @@ import Records from './pages/Records'
 import Alerts from './pages/Alerts'
 import { initDb } from './lib/database'
 import { queryDb } from './lib/database'
-import { startAutoSync, stopAutoSync, checkSubscriptionBlocked } from './lib/sync'
+import { startAutoSync, stopAutoSync, checkSubscriptionBlocked, ensureLinked } from './lib/sync'
 import { useSyncStore } from './lib/store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -117,6 +117,7 @@ function OnboardingRoute() {
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth()
   const [dbReady, setDbReady] = useState(false)
+  const [sessionRestored, setSessionRestored] = useState(false)
   const blocked = useSyncStore((s) => s.blocked)
   const blockReason = useSyncStore((s) => s.blockReason)
 
@@ -131,14 +132,29 @@ function AppRoutes() {
 
   useEffect(() => {
     if (!dbReady) return
-    startAutoSync()
-    checkSubscriptionBlocked()
-      .then((b) => useSyncStore.getState().setBlocked(b.blocked, b.reason ?? null))
-      .catch(() => {})
-    return () => stopAutoSync()
+    let disposed = false
+
+    const initializeSync = async () => {
+      // Marketplace, Orders, and Subscription read the Supabase SDK directly
+      // when they mount, so restore its session before rendering any routes.
+      await ensureLinked().catch(() => {})
+      if (disposed) return
+
+      setSessionRestored(true)
+      startAutoSync()
+      checkSubscriptionBlocked()
+        .then((b) => useSyncStore.getState().setBlocked(b.blocked, b.reason ?? null))
+        .catch(() => {})
+    }
+
+    initializeSync()
+    return () => {
+      disposed = true
+      stopAutoSync()
+    }
   }, [dbReady])
 
-  if (!dbReady || isLoading) {
+  if (!dbReady || !sessionRestored || isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
         <div className="animate-pulse text-primary-400">Loading...</div>

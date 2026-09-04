@@ -5,6 +5,7 @@ import type { DashboardStats } from '../types'
 
 let Ie: any = null
 const SESSION_KEY = 'cervos_supabase_session'
+let restoringSession: Promise<boolean> | null = null
 
 async function saveSession(session: any): Promise<void> {
   if (session) {
@@ -48,17 +49,31 @@ export async function setLastPullTimestamp(n: string, t: string): Promise<void> 
   )
 }
 
-export async function ensureLinked(): Promise<boolean> {
+function isPermanentSessionError(error: any): boolean {
+  // Invalid/revoked refresh tokens are client errors. Network failures and
+  // server errors must leave the local backup intact so an offline POS can
+  // restore the session when it reconnects.
+  return typeof error?.status === 'number' && error.status >= 400 && error.status < 500
+}
+
+async function restoreLinkedSession(): Promise<boolean> {
   if (!isConfigured) return false
   const storedSession = await loadSession()
-  if (storedSession) {
+  if (storedSession?.access_token && storedSession?.refresh_token) {
     Ie = supabase
-    const { data } = await Ie.auth.getSession()
-    if (!data.session) {
+    // The Tauri webview's internal storage is not a reliable cross-restart
+    // source of truth, so explicitly hydrate the SDK from our backup.
+    const { data, error } = await Ie.auth.setSession({
+      access_token: storedSession.access_token,
+      refresh_token: storedSession.refresh_token,
+    })
+    if (error || !data.session) {
       Ie = null
-      await saveSession(null)
+      if (isPermanentSessionError(error)) await saveSession(null)
       return false
     }
+    // setSession may have refreshed the tokens; preserve the new pair.
+    await saveSession(data.session)
     return true
   }
   const { data } = await supabase.auth.getSession()
@@ -68,6 +83,17 @@ export async function ensureLinked(): Promise<boolean> {
     return true
   }
   return false
+}
+
+export async function ensureLinked(): Promise<boolean> {
+  // App startup and an early manual sync may request restoration together.
+  // Share the operation rather than racing two setSession calls.
+  if (!restoringSession) {
+    restoringSession = restoreLinkedSession().finally(() => {
+      restoringSession = null
+    })
+  }
+  return restoringSession
 }
 
 export async function signIn(
