@@ -320,7 +320,7 @@ export const strings: Record<string, Record<Lang, string>> = {
   "mkt.checkout.branch_label": { EN: "Ordering branch", SW: "Tawi linaloagiza" },
   "mkt.checkout.wallet_label": { EN: "Payme wallet (used once the supplier approves)", SW: "Mkoba wa Payme (utatumika baada ya muuzaji kuidhinisha)" },
   "mkt.checkout.escrow_note": { EN: "You'll pay via Payme Africa only after the supplier approves this order — nothing is charged now.", SW: "Utalipa kupitia Payme Africa baada tu ya muuzaji kuidhinisha agizo hili — hakuna malipo sasa." },
-  "mkt.checkout.place_order": { EN: "Place Order & Pay", SW: "Weka Oda na Lipa" },
+  "mkt.checkout.place_order": { EN: "Place Order", SW: "Weka Oda" },
 
   // Payment settings form (shared pharmacy + supplier)
   "pay.title.accepted":  { EN: "Accepted Payment Methods", SW: "Njia za Malipo Zinazokubaliwa" },

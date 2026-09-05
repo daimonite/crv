@@ -452,7 +452,7 @@ export async function approveOrderForPayment(orderId: string): Promise<{ error: 
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, status, supplier_approved_at")
+    .select("id, order_reference, buyer_branch_id, status, supplier_approved_at")
     .eq("id", orderId)
     .eq("seller_id", account.id)
     .maybeSingle();
@@ -468,7 +468,32 @@ export async function approveOrderForPayment(orderId: string): Promise<{ error: 
     .eq("id", orderId)
     .eq("seller_id", account.id);
 
-  return { error: updateError ? updateError.message : null };
+  if (updateError) return { error: updateError.message };
+
+  // The POS polls account notifications during its sync cycle. Let the branch
+  // know immediately that a Payme payment can now be started. This write uses
+  // the server-only client because the supplier does not own the pharmacy's
+  // notification rows.
+  const service = await createServiceClient();
+  const { data: branch } = await service
+    .from("branches")
+    .select("account_id")
+    .eq("id", order.buyer_branch_id)
+    .maybeSingle();
+  if (branch?.account_id) {
+    const { error: notificationError } = await service.from("notifications").insert({
+      account_id: branch.account_id,
+      branch_id: order.buyer_branch_id,
+      kind: "order",
+      title: "Order approved",
+      body: `${account.name ?? "Your supplier"} approved order ${order.order_reference}. Pay now to confirm it.`,
+      route: "/dashboard/orders",
+      read: false,
+    });
+    if (notificationError) console.error("[supplier] approval notification failed:", notificationError.message);
+  }
+
+  return { error: null };
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
