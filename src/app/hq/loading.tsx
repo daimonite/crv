@@ -12,7 +12,7 @@ export default function HQLoading() {
         ))}
       </aside>
       <main className="ml-64 flex-1 p-8 pt-12">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl">
           <div className="h-8 w-48 bg-surface-container rounded mb-8" />
           <div className="grid grid-cols-3 gap-6 mb-8">
             {[...Array(3)].map((_, i) => (

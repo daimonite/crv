@@ -8,7 +8,7 @@ export default function HQIntelligenceLoading() {
         ))}
       </aside>
       <main className="ml-64 flex-1 p-8 pt-12">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl">
           <div className="flex items-start justify-between mb-8">
             <div>
               <div className="h-3 w-28 bg-surface-container rounded mb-2" />

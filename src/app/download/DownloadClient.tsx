@@ -233,10 +233,9 @@ function MapScreen({ show }: { show: boolean }) {
           scrollWheelZoom: false,
         });
 
-        // CartoDB Dark Matter — matches the dark grey overlay perfectly
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-          subdomains: "abcd",
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          className: "cervos-dark-tiles",
           maxZoom: 19,
         }).addTo(map);
 

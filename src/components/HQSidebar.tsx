@@ -48,7 +48,7 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   }
 
   return (
-    <aside className="hidden md:flex flex-col h-full py-4 bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-40 overflow-hidden">
+    <aside className="hidden md:flex flex-col w-64 z-40 fixed left-0 top-0 bottom-0 border-r border-outline-variant bg-surface-container-low h-full py-4 overflow-hidden">
       <div className="px-6 mb-3">
         <h2 className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">
           {t("hq.sidebar.title")}

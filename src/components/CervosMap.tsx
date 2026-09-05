@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useMemo } from "react";
 import "leaflet/dist/leaflet.css";
@@ -20,6 +20,7 @@ interface CervosMapProps {
   markers?: MarkerData[];
   className?: string;
   onMarkerClick?: (marker: MarkerData) => void;
+  onMapClick?: (location: { lat: number; lng: number }) => void;
   selectedId?: string | null;
 }
 
@@ -81,12 +82,15 @@ export default function CervosMap({
   markers = [],
   className = "h-full w-full",
   onMarkerClick,
+  onMapClick,
   selectedId,
 }: CervosMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const markersLayerRef = useRef<unknown>(null);
   const leafletLoadedRef = useRef(false);
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
 
   const markersKey = useMemo(
     () => markers.map((m) => `${m.id ?? m.lat},${m.lng},${m.status},${m.label}`).join("|"),
@@ -116,9 +120,13 @@ export default function CervosMap({
         scrollWheelZoom: true,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: "abcd",
+      map.on("click", (e) => {
+        onMapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+      });
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        className: "cervos-dark-tiles",
         maxZoom: 19,
       }).addTo(map);
 
@@ -178,6 +186,9 @@ export default function CervosMap({
         @keyframes pulse-ring {
           0% { transform: scale(1); opacity: 0.4; }
           100% { transform: scale(1.8); opacity: 0; }
+        }
+        .cervos-dark-tiles {
+          filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
         }
         .leaflet-popup-content-wrapper {
           border-radius: 8px !important;

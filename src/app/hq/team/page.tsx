@@ -21,7 +21,7 @@ export default async function HQTeamPage() {
     <div className="flex min-h-screen bg-surface-container-lowest">
       <HQSidebarServer />
       <main className="flex-1 ml-64 p-8 pt-12">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl">
           <div className="mb-8">
             <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest mb-1">
               HQ Console

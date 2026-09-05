@@ -194,5 +194,10 @@
 .leaflet-container {
   height: 100%;
   width: 100%;
-  background: #e8e5ff;
+  background: #111318;
+}
+
+/* Dark mode filter for OpenStreetMap raster tiles (no API key required) */
+.cervos-dark-tiles {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
 }

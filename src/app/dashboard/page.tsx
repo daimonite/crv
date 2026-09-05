@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   const graceBranches = branches.filter((b) => b.subscription_status === "grace");
 
   const mapMarkers = branches
-    .filter((b) => b.lat && b.lng)
+    .filter((b) => b.lat != null && b.lng != null)
     .map((b) => ({
       lat: b.lat as number,
       lng: b.lng as number,

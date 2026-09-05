@@ -8,7 +8,7 @@ export default function HQBillingLoading() {
         ))}
       </aside>
       <main className="ml-64 flex-1 p-8 pt-12">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl">
           <div className="mb-8">
             <div className="h-3 w-28 bg-surface-container rounded mb-2" />
             <div className="h-7 w-56 bg-surface-container rounded" />

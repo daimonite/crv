@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import type { Branch } from "@/lib/actions/branches";
+import CervosMap from "@/components/MapClientWrapper";
 
 interface BranchesTableProps {
   branches: Branch[];
@@ -38,6 +39,7 @@ export default function BranchesTable({ branches, accountId }: BranchesTableProp
   const [form, setForm] = useState<BranchForm>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [branchOperators, setBranchOperators] = useState<unknown[]>([]);
   const [branchOrders, setBranchOrders] = useState<unknown[]>([]);
@@ -64,6 +66,34 @@ export default function BranchesTable({ branches, accountId }: BranchesTableProp
     setModal({ mode: null, branch: null });
     setForm(EMPTY_FORM);
     setError(null);
+  };
+
+  const setLocation = (location: { lat: number; lng: number }) => {
+    setForm((current) => ({
+      ...current,
+      lat: location.lat.toFixed(6),
+      lng: location.lng.toFixed(6),
+    }));
+  };
+
+  const useDeviceLocation = () => {
+    if (!navigator.geolocation) {
+      setError("This device does not support location services. Select the branch location on the map instead.");
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setLocating(false);
+      },
+      () => {
+        setError("Location permission was not granted. Select the branch location on the map or enter coordinates manually.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 }
+    );
   };
 
   const handleSubmit = useCallback(async () => {
@@ -239,8 +269,8 @@ export default function BranchesTable({ branches, accountId }: BranchesTableProp
       </div>
 
       {modal.mode && (
-        <div className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50" onClick={closeModal}>
-          <div className="bg-surface-base rounded-lg border border-outline-variant w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
+          <div className="bg-surface-base rounded-lg border border-outline-variant w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-headline-md text-headline-md text-ink-deep mb-6">
               {modal.mode === "add" ? t("dash.branches.addTitle") : t("dash.branches.editTitle")}
             </h2>
@@ -293,6 +323,33 @@ export default function BranchesTable({ branches, accountId }: BranchesTableProp
                     onChange={(e) => setForm({ ...form, lng: e.target.value })}
                     placeholder="e.g. 39.280"
                     className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded text-sm focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-label-md text-label-md text-on-surface-variant">Branch location</p>
+                    <p className="text-xs text-on-surface-variant">Click the map to place the branch, or use this device&apos;s location while at the branch.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={useDeviceLocation}
+                    disabled={locating}
+                    className="inline-flex items-center gap-1 rounded border border-primary px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">my_location</span>
+                    {locating ? "Locating…" : "Use device location"}
+                  </button>
+                </div>
+                <div className="h-56 overflow-hidden rounded border border-outline-variant">
+                  <CervosMap
+                    center={form.lat && form.lng ? [Number(form.lat), Number(form.lng)] : [-6.816, 39.2803]}
+                    zoom={form.lat && form.lng ? 15 : 11}
+                    markers={form.lat && form.lng ? [{ id: "selected-location", lat: Number(form.lat), lng: Number(form.lng), label: "Selected branch location", status: "online" }] : []}
+                    onMapClick={setLocation}
+                    className="h-56 w-full"
                   />
                 </div>
               </div>

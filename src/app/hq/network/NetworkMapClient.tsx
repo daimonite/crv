@@ -110,7 +110,7 @@ export default function NetworkMapClient({ branches }: Props) {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto w-full">
+    <div className="max-w-7xl w-full">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>

@@ -28,7 +28,7 @@ export default async function HQAccountDetailPage({
     <div className="flex min-h-screen bg-surface-container-lowest">
       <HQSidebarServer />
       <main className="flex-1 ml-64 p-8 pt-12">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl">
           <Link
             href="/hq/accounts"
             className="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:underline mb-4"

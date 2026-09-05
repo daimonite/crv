@@ -73,7 +73,7 @@ export default async function NetworkPage() {
   ];
 
   const markers = branchList
-    .filter((b) => b.lat && b.lng)
+    .filter((b) => b.lat != null && b.lng != null)
     .map((b) => ({
       lat: b.lat as number,
       lng: b.lng as number,
@@ -123,15 +123,17 @@ export default async function NetworkPage() {
 
         <main className="flex-grow pt-16 flex">
           <div className="flex-1 bg-surface-container-low relative min-h-[calc(100vh-4rem)]">
-            {markers.length > 0 ? (
-              <CervosMap center={center as [number, number]} zoom={11} markers={markers} className="w-full h-full" />
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center">
-                <span className="material-symbols-outlined text-[64px] text-on-surface-variant/20 mb-4">map</span>
-                <p className="font-body-md text-body-md text-on-surface-variant">No branches with locations yet.</p>
-                <Link href="/dashboard/branches" className="text-primary font-label-md text-label-md mt-2 hover:underline">
-                  Manage branches
-                </Link>
+            <CervosMap center={center as [number, number]} zoom={11} markers={markers} className="w-full h-full" />
+            {markers.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center bg-surface/70 backdrop-blur-[1px] pointer-events-none">
+                <div className="max-w-sm rounded-lg border border-outline-variant bg-surface-base p-6 text-center shadow-lg pointer-events-auto">
+                  <span className="material-symbols-outlined text-[48px] text-primary mb-3">location_on</span>
+                  <p className="font-body-md text-body-md text-ink-deep">Set a location for each branch to place it on this map.</p>
+                  <p className="mt-1 text-sm text-on-surface-variant">Open a branch and click its location on the map, or use the device&apos;s current location while at the branch.</p>
+                  <Link href="/dashboard/branches" className="inline-flex mt-4 rounded bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:opacity-90">
+                    Set branch locations
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -166,6 +168,11 @@ export default async function NetworkPage() {
                         <p className="font-body-sm text-body-sm text-on-surface-variant truncate">
                           {b.address ?? `(${typeof b.lat === "number" ? b.lat.toFixed(4) : "—"}, ${typeof b.lng === "number" ? b.lng.toFixed(4) : "—"})`}
                         </p>
+                        {(b.lat == null || b.lng == null) && (
+                          <Link href="/dashboard/branches" className="mt-1 inline-block text-xs font-semibold text-primary hover:underline">
+                            Set location
+                          </Link>
+                        )}
                       </div>
                     </div>
                   );
