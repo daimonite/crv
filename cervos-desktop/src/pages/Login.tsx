@@ -12,6 +12,7 @@ export default function Login() {
   const [operators, setOperators] = useState<Operator[]>([])
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null)
   const [pin, setPin] = useState('')
+  const [adminPin, setAdminPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [blocked, setBlocked] = useState(false)
@@ -51,6 +52,12 @@ export default function Login() {
       const op = await validateOperatorPin(selectedOperator.id, pin)
       if (!op) {
         setError('Invalid PIN')
+        return
+      }
+      // The portal PIN identifies the administrator. The explicit main PIN
+      // is a second, local terminal gate requested for the admin role.
+      if (op.role === 'admin' && adminPin !== '1234') {
+        setError('Enter the main admin PIN to continue')
         return
       }
       const branchRes = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
@@ -142,6 +149,7 @@ export default function Login() {
                       const op = operators.find((o) => o.id === e.target.value)
                       setSelectedOperator(op || null)
                       setPin('')
+                      setAdminPin('')
                     }}
                     required
                     className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
@@ -153,19 +161,36 @@ export default function Login() {
                   </select>
                 </div>
                 {selectedOperator && (
-                  <div>
-                    <label className="block text-sm font-semibold text-on-surface-variant mb-2">PIN</label>
-                    <input
-                      type="password"
-                      value={pin}
-                      onChange={(e) => setPin(e.target.value)}
-                      required
-                      maxLength={8}
-                      className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Enter PIN"
-                      autoFocus
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-on-surface-variant mb-2">Portal PIN</label>
+                      <input
+                        type="password"
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value)}
+                        required
+                        maxLength={8}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        placeholder="Enter your assigned PIN"
+                        autoFocus
+                      />
+                    </div>
+                    {selectedOperator.role === 'admin' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-on-surface-variant mb-2">Main admin PIN</label>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          value={adminPin}
+                          onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                          required
+                          maxLength={8}
+                          className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          placeholder="Enter main PIN"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
                 <button
                   type="submit"

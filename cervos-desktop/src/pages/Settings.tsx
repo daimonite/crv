@@ -12,6 +12,8 @@ export default function Settings() {
   const { logout, currentOperator, isAdmin } = useAuthStore()
   const { locale, setLocale } = useI18nStore()
   const [pharmacyName, setPharmacyName] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [linkedBranchName, setLinkedBranchName] = useState('')
   const [stats, setStats] = useState({ linked: false, pendingCount: 0, lastSyncedAt: null as string | null })
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState('')
@@ -39,7 +41,7 @@ export default function Settings() {
     if (isAdmin) {
       loadOperators()
     }
-  }, [isAdmin])
+  }, [isAdmin, branchId])
 
   async function loadSettings() {
     const nameResult = await queryDb("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
@@ -50,6 +52,10 @@ export default function Settings() {
     if (branchResult.length > 0) {
       setBranchId(JSON.parse(branchResult[0].value))
     }
+    const accountResult = await queryDb("SELECT value FROM app_settings WHERE key = 'account_name'")
+    if (accountResult.length > 0) setAccountName(JSON.parse(accountResult[0].value))
+    const linkedBranchResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
+    if (linkedBranchResult.length > 0) setLinkedBranchName(JSON.parse(linkedBranchResult[0].value))
     const s = await getDashboardStats()
     setStats(s)
     const config = await queryDb("SELECT key, value FROM app_settings WHERE key IN ('tax_rate', 'low_stock_threshold', 'expiry_days_threshold')")
@@ -77,6 +83,7 @@ export default function Settings() {
         pin: newOpPin,
         role: newOpRole,
       })
+      runSyncCycle().catch(() => {})
       setNewOpName('')
       setNewOpPin('')
       setNewOpRole('operator')
@@ -91,6 +98,7 @@ export default function Settings() {
     if (id === currentOperator?.id) return
     if (!confirm('Delete this operator?')) return
     await deleteOperator(id)
+    runSyncCycle().catch(() => {})
     loadOperators()
   }
 
@@ -182,6 +190,17 @@ export default function Settings() {
           </h2>
 
           <div className="space-y-4">
+            {(accountName || linkedBranchName) && (
+              <div className="flex items-start gap-2 rounded-lg bg-primary/5 border border-primary/15 p-3">
+                <span className="material-symbols-outlined text-primary">domain</span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Linked pharmacy account</p>
+                  <p className="text-sm font-medium text-on-surface">
+                    {accountName || 'Pharmacy account'}{linkedBranchName ? ` · Branch: ${linkedBranchName}` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">
                 {t('settings.pharmacyName')}

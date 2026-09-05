@@ -1,38 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAnonClient } from "@supabase/supabase-js";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 
-async function getUserFromRequest(request: NextRequest) {
-  // Try cookie-based auth first (web)
-  try {
-    const cookieClient = await createClient();
-    const { data: { user } } = await cookieClient.auth.getUser();
-    if (user) return { user, client: cookieClient };
-  } catch { /* fallback to Bearer */ }
+export async function GET(_request: NextRequest) {
+  // Catalog listings are intentionally public. The desktop needs to display
+  // supplier products before a restored session is available; sensitive
+  // actions (connection approval, checkout, and payment) still authenticate
+  // and verify branch ownership in their own route handlers.
 
-  // Try Bearer token (desktop apps)
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (token) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const bearerClient = createAnonClient(url, anonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: { user } } = await bearerClient.auth.getUser();
-    if (user) return { user, client: bearerClient as unknown as Awaited<ReturnType<typeof createClient>> };
-  }
-
-  return { user: null, client: null };
-}
-
-export async function GET(request: NextRequest) {
-  const { user } = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  }
-
-  // Use service client to bypass RLS but still require auth
+  // Service access is limited to these explicitly mapped public catalogue
+  // fields; checkout never trusts client-supplied product price or stock.
   const supabase = await createServiceClient();
 
   type Row = {

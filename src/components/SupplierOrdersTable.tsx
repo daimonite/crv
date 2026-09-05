@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { updateOrderStatus, approveOrderForPayment } from "@/lib/actions/supplier";
 
 /** A single inbound purchase order from a pharmacy branch. */
@@ -217,9 +217,8 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
               </tr>
             )}
             {filtered.map((order) => (
-              <>
+              <Fragment key={order.id}>
                 <tr
-                  key={order.id}
                   className="border-b border-outline-variant hover:bg-surface-container-low transition-colors cursor-pointer"
                   onClick={() => setExpanded(expanded === order.id ? null : order.id)}
                 >
@@ -313,7 +312,7 @@ export default function SupplierOrdersTable({ orders }: SupplierOrdersTableProps
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

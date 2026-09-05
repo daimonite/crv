@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { queryDb } from '../lib/database'
 import { fetchOperators, createOperator, updateOperator, deleteOperator } from '../lib/queries'
+import { runSyncCycle } from '../lib/sync'
 import type { Operator } from '../types'
 
 export default function Users() {
@@ -28,6 +29,7 @@ export default function Users() {
   async function handleDelete(id: string) {
     if (!confirm('Delete this operator?')) return
     await deleteOperator(id)
+    runSyncCycle().catch(() => {})
     loadOperators()
   }
 
@@ -118,6 +120,7 @@ export default function Users() {
             } else if (branchId && data.name && data.pin) {
               await createOperator({ branch_id: branchId, name: data.name, pin: data.pin, role: data.role || 'operator' })
             }
+            runSyncCycle().catch(() => {})
             loadOperators()
             setShowAddModal(false)
             setEditingOp(null)

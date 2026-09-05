@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signIn, getLinkStatus, linkToExistingBranch, type RemoteBranch } from '../lib/sync'
+import { signIn, getLinkStatus, linkToExistingBranch, runSyncCycle, type RemoteBranch } from '../lib/sync'
 import { queryDb } from '../lib/database'
-import { useAuth } from '../lib/hooks'
 import { open } from '@tauri-apps/plugin-shell'
 import { WEB_URL } from '../lib/web'
 
-type OnboardingStep = 'welcome' | 'link' | 'select-branch' | 'create-pin' | 'done'
+type OnboardingStep = 'welcome' | 'link' | 'select-branch' | 'done'
 
 interface OnboardingProps {
   onComplete?: () => void
@@ -15,12 +14,9 @@ interface OnboardingProps {
 
 export default function Onboarding({ onComplete, relinking = false }: OnboardingProps) {
   const navigate = useNavigate()
-  const { setOperator } = useAuth()
-
   const [step, setStep] = useState<OnboardingStep>('welcome')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [branches, setBranches] = useState<RemoteBranch[]>([])
@@ -28,6 +24,18 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
 
   const inputClass = 'w-full h-12 px-4 bg-surface-base border border-ink-deep/20 rounded-none text-body-md text-ink-deep focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-text-muted'
   const btnClass = 'w-full h-12 bg-primary text-white rounded-none font-label-md font-bold flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-60'
+
+  async function finishLink() {
+    const branchRows = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    const branchId = branchRows.length ? JSON.parse(branchRows[0].value) : null
+    const operators = branchId
+      ? await queryDb('SELECT id FROM operators WHERE branch_id = ?', [branchId])
+      : []
+    if (operators.length === 0) {
+      throw new Error('No branch operators are available yet. Add an operator and their login PIN in the pharmacy portal, then link this POS again.')
+    }
+    setStep('done')
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -48,7 +56,8 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
           onComplete?.()
           return
         }
-        setStep('create-pin')
+        await runSyncCycle()
+        await finishLink()
         return
       }
       if (status.branches.length === 0) {
@@ -57,7 +66,7 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
       }
       if (status.branches.length === 1) {
         await linkToExistingBranch(status.branches[0].id)
-        setStep('create-pin')
+        await finishLink()
         return
       }
       setBranches(status.branches)
@@ -74,7 +83,7 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
     setError(null)
     try {
       await linkToExistingBranch(branchId)
-      setStep('create-pin')
+      await finishLink()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to link this branch')
     } finally {
@@ -86,7 +95,7 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
     // Pull the real linked branch's name/address (written by
     // linkToExistingBranch) for display on the final confirmation screen —
     // never invented, always whatever this device actually got linked to.
-    if (step !== 'create-pin' && step !== 'done') return
+    if (step !== 'done') return
     ;(async () => {
       const nameRows = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
       const addrRows = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_address'")
@@ -96,43 +105,6 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
       })
     })()
   }, [step])
-
-  async function handleCreatePin(e: React.FormEvent) {
-    e.preventDefault()
-    if (pin.length < 4) {
-      setError('PIN must be at least 4 digits')
-      return
-    }
-    setIsLoading(true)
-    setError(null)
-    try {
-      const { createOperator } = await import('../lib/queries')
-      const { queryDb: dbQuery } = await import('../lib/database')
-
-      const branchResult = await dbQuery("SELECT value FROM app_settings WHERE key = 'branch_id'")
-      if (branchResult.length === 0) {
-        // Should be unreachable given the flow above, but fail loudly rather
-        // than fabricating a random branch_id disconnected from any real
-        // pharmacy portal branch (that was the previous behavior here).
-        throw new Error('No branch linked to this device — go back and sign in again.')
-      }
-      const branchId = JSON.parse(branchResult[0].value) as string
-
-      const op = await createOperator({
-        branch_id: branchId,
-        name: 'Admin',
-        pin: pin,
-        role: 'admin',
-      })
-
-      setOperator(op)
-      setStep('done')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create PIN')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   async function handleOpenSignup() {
     const signupUrl = `${WEB_URL}/auth?tab=signup&type=pharmacy`
@@ -324,41 +296,6 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
               </div>
             )}
 
-            {step === 'create-pin' && (
-              <form onSubmit={handleCreatePin} className="flex flex-col gap-4">
-                <div className="text-center mb-2">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <span className="material-symbols-outlined text-[24px] text-primary">lock</span>
-                  </div>
-                  <h2 className="font-headline-md text-headline-md text-ink-deep mb-1">Create Admin PIN</h2>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant">
-                    Set a local PIN to secure this device
-                  </p>
-                </div>
-
-                <input
-                  type="password"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                  placeholder="PIN (4+ digits)"
-                  required
-                  minLength={4}
-                  maxLength={8}
-                  className="w-full h-12 px-4 bg-white border border-gray-300 rounded-none text-gray-900 text-center text-2xl tracking-widest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-gray-400"
-                />
-
-                {error && (
-                  <div className="p-3 bg-error/10 border border-error/20 rounded text-error text-sm">
-                    {error}
-                  </div>
-                )}
-
-                <button type="submit" disabled={pin.length < 4 || isLoading} className={btnClass}>
-                  {isLoading ? 'Creating...' : 'Create PIN & Finish'}
-                </button>
-              </form>
-            )}
-
             {step === 'done' && (
               <div className="text-center">
                 <div className="w-16 h-16 mx-auto mb-4 bg-secondary/10 rounded-full flex items-center justify-center">
@@ -366,7 +303,7 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
                 </div>
                 <h2 className="font-headline-md text-headline-md text-ink-deep mb-2">You're All Set!</h2>
                 <p className="font-body-md text-body-md text-on-surface-variant mb-6">
-                  This device is linked to your branch and ready.
+                  This device is linked to your branch. Operators can now sign in with the PIN assigned in the pharmacy portal.
                 </p>
 
                 <div className="bg-surface-container rounded p-4 text-left text-sm mb-6">
@@ -378,7 +315,7 @@ export default function Onboarding({ onComplete, relinking = false }: Onboarding
                 </div>
 
                 <button onClick={handleDone} className={btnClass}>
-                  Go to Dashboard
+                  Go to Sign In
                 </button>
               </div>
             )}

@@ -260,6 +260,17 @@ export async function linkToExistingBranch(branchId: string): Promise<void> {
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_address', JSON.stringify(branch.address ?? '')]
   )
+  await executeDb(
+    `INSERT INTO branches (id, account_id, name, subscription_status, subscription_tier)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET account_id = excluded.account_id, name = excluded.name`,
+    [branch.id, branch.account_id, branch.name, 'trial', 'free']
+  )
+
+  // Operators are created and managed in the pharmacy portal. Pull them as
+  // part of linking so the first POS login can use their portal-assigned PIN
+  // immediately, rather than waiting for the background sync timer.
+  await pullBranchOperators(branch.id)
 }
 
 /**
@@ -460,7 +471,62 @@ async function applyCommand(cmd: any): Promise<void> {
   // force_sync is naturally handled by the next cycle
 }
 
+/** Reconcile the portal's authoritative operator list for one branch. */
+async function reconcileBranchOperators(branchId: string, remoteOperators: any[]): Promise<void> {
+  const remoteIds = new Set(remoteOperators.map((op) => op.id))
+
+  for (const op of remoteOperators) {
+    await upsertLocal('operators', {
+      id: op.id,
+      branch_id: op.branch_id,
+      name: op.name,
+      pin_hash: op.pin_hash,
+      role: op.role,
+      created_at: op.created_at ?? null,
+    })
+  }
+
+  // A portal deletion must revoke the local login too. Do not remove a local
+  // change that is still queued for upload, otherwise an offline admin could
+  // lose a newly-created operator before the next successful sync.
+  const localOperators = await queryDb('SELECT id FROM operators WHERE branch_id = ?', [branchId])
+  for (const local of localOperators) {
+    if (remoteIds.has(local.id)) continue
+    const pending = await queryDb(
+      "SELECT id FROM sync_queue WHERE table_name = 'operators' AND row_id = ? LIMIT 1",
+      [local.id]
+    )
+    if (pending.length === 0) {
+      await executeDb('DELETE FROM operators WHERE id = ?', [local.id])
+    }
+  }
+}
+
+async function pullBranchOperators(branchId: string): Promise<void> {
+  if (!Ie) throw new Error('Not linked to Supabase — please sign in again.')
+  const { data, error } = await Ie.from('operators').select('*').eq('branch_id', branchId)
+  if (error) throw new Error(error.message)
+  await reconcileBranchOperators(branchId, data ?? [])
+}
+
 async function applyPulledData(data: any): Promise<void> {
+  if (data.branch && data.branchId) {
+    // The local branch row powers offline subscription display and login
+    // checks. Keep it aligned with the authoritative portal branch each pull.
+    await executeDb(
+      `UPDATE branches
+       SET subscription_status = ?, subscription_tier = ?, grace_ends_at = ?, trial_ends_at = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        data.branch.subscription_status ?? 'trial',
+        data.branch.subscription_tier ?? 'free',
+        data.branch.grace_ends_at ?? null,
+        data.branch.trial_ends_at ?? null,
+        new Date().toISOString(),
+        data.branchId,
+      ]
+    )
+  }
   for (const p of data.products || []) {
     await upsertLocal('products', {
       id: p.id,
@@ -490,20 +556,9 @@ async function applyPulledData(data: any): Promise<void> {
       updated_at: b.updated_at,
     })
   }
-  for (const op of data.operators || []) {
-    await upsertLocal('operators', {
-      id: op.id,
-      branch_id: op.branch_id,
-      name: op.name,
-      pin_hash: op.pin_hash,
-      role: op.role,
-      created_at: op.created_at ?? null,
-    })
+  if (data.operatorsBranchId) {
+    await reconcileBranchOperators(data.operatorsBranchId, data.operators || [])
   }
-  // NOTE: this only creates/updates operators locally. An operator deleted on the
-  // web dashboard is NOT removed from the desktop's local SQLite by this cycle —
-  // reconciling deletes safely (without racing a not-yet-pushed local create) needs
-  // a tombstone/deleted_at approach on the operators table, not implemented here.
   for (const cmd of data.commands || []) {
     await applyCommand(cmd)
   }
@@ -631,7 +686,7 @@ export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pu
 
     const pulled = products.length + batches.length + commands.length + operators.length + orders.length + notifications.length
 
-    await applyPulledData({ products, batches, commands, branch, operators, orders, orderLineItems, notifications })
+    await applyPulledData({ products, batches, commands, branch, branchId, operators, operatorsBranchId: branchId, orders, orderLineItems, notifications })
 
     if (commands.length > 0) {
       await Ie.from('branch_commands')

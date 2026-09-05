@@ -61,10 +61,20 @@ export async function proxy(request: NextRequest) {
 
   let supabaseResponse = NextResponse.next({ request });
 
+  // Build a custom fetch that will be aborted after TIMEOUT_MS to prevent
+  // hanging requests from blocking the entire page render when Supabase is
+  // unreachable (e.g. IPv6 stall, network outage, paused project).
+  const TIMEOUT_MS = 3000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timedFetch: typeof fetch = (input, init) =>
+    fetch(input, { ...init, signal: controller.signal });
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: timedFetch },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -85,12 +95,23 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Refresh session — do NOT add logic between createServerClient and getUser
-  const {
-    data: { user },
-  } = IS_MOCK
-    ? { data: { user: mockUserFromRequest(request) } }
-    : await supabase.auth.getUser();
+  // Refresh session — do NOT add logic between createServerClient and getUser.
+  // On network failure the race resolves to null (treat as signed-out) so
+  // protected routes redirect to /auth instead of hanging for 26 s.
+  let user: { user_metadata?: Record<string, unknown> } | null = null;
+  if (IS_MOCK) {
+    user = mockUserFromRequest(request);
+  } else {
+    try {
+      const result = await supabase.auth.getUser();
+      user = result.data.user;
+    } catch {
+      // Network error (AbortError, fetch failed, etc.) — treat as signed-out.
+      user = null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
 
   // HQ guard — validates derived session token, not the raw secret

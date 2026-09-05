@@ -106,6 +106,13 @@ export default function Pos() {
   function handleSearchBarcode() {
     if (!searchQuery) return;
     const found = findProductByBarcode(searchQuery);
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const productByName = products.find((product) =>
+      [product.generic_name, product.brand_name, product.barcode]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedQuery))
+    );
+    const namedBatch = productByName && batches.find((batch) => batch.product_id === productByName.id);
     if (found) {
       addToCart({
         batch: found.batch,
@@ -113,6 +120,8 @@ export default function Pos() {
         quantity: 1,
         unit_price: found.batch.sale_price,
       });
+    } else if (productByName && namedBatch) {
+      addToCart({ batch: namedBatch, product: productByName, quantity: 1, unit_price: namedBatch.sale_price });
     }
     setSearchQuery("");
   }
@@ -348,7 +357,7 @@ export default function Pos() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold">
-                      ${(item.unit_price * item.quantity).toFixed(2)}
+                      TZS {(item.unit_price * item.quantity).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -393,7 +402,7 @@ export default function Pos() {
 
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-              Discount ($)
+              Discount (TZS)
             </label>
             <input
               type="number"
@@ -407,7 +416,7 @@ export default function Pos() {
 
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-              Amount Tendered ($)
+              Amount Tendered (TZS)
             </label>
             <input
               type="number"
@@ -415,7 +424,7 @@ export default function Pos() {
               onChange={(e) => setTenderAmount(e.target.value)}
               min="0"
               step="0.01"
-              placeholder={getTotal().toFixed(2)}
+              placeholder={getTotal().toLocaleString()}
               className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary"
             />
           </div>
