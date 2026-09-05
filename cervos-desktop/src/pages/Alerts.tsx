@@ -1,10 +1,11 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { queryDb, executeDb } from '../lib/database'
 import { useAuthStore } from '../lib/store'
 import { getSupabase } from '../lib/sync'
 
 interface SubscriptionInfo {
   status: string
+  tier: string
   grace_ends_at: string | null
   trial_ends_at: string | null
 }
@@ -55,12 +56,14 @@ export default function Alerts() {
     const statusResult = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_status'")
     const graceResult = await queryDb("SELECT value FROM app_settings WHERE key = 'grace_ends_at'")
     const trialResult = await queryDb("SELECT value FROM app_settings WHERE key = 'trial_ends_at'")
+    const tierResult = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_tier'")
 
     const status = statusResult.length > 0 ? JSON.parse(statusResult[0].value) : 'trial'
     const graceEndsAt = graceResult.length > 0 ? JSON.parse(graceResult[0].value) : null
     const trialEndsAt = trialResult.length > 0 ? JSON.parse(trialResult[0].value) : null
+    const tier = tierResult.length > 0 ? JSON.parse(tierResult[0].value) : 'free'
 
-    setSubscription({ status, grace_ends_at: graceEndsAt, trial_ends_at: trialEndsAt })
+    setSubscription({ status, tier, grace_ends_at: graceEndsAt, trial_ends_at: trialEndsAt })
     checkWarning(status, graceEndsAt, trialEndsAt)
   }
 
@@ -105,22 +108,25 @@ export default function Alerts() {
         </div>
       )}
 
-      {isAdmin && subscription && (
-        <div className="bg-surface-base border border-outline-variant rounded-xl p-5">
-          <h2 className="font-headline text-lg font-bold text-on-surface mb-4">
-            Subscription Status
-          </h2>
+      {subscription && (
+        <div className="bg-surface-base border border-outline-variant rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-headline text-lg font-bold text-on-surface">
+              Branch Subscription Status
+            </h2>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+              subscription.status === 'active' ? 'bg-secondary/10 text-secondary' :
+              subscription.status === 'trial' ? 'bg-blue-500/10 text-blue-400' :
+              subscription.status === 'grace' ? 'bg-amber-500/10 text-amber-400' :
+              'bg-error/10 text-error'
+            }`}>
+              {subscription.status.toUpperCase()}
+            </span>
+          </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-on-surface-variant">Status</span>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                subscription.status === 'active' ? 'bg-secondary/10 text-secondary' :
-                subscription.status === 'trial' ? 'bg-blue-500/10 text-blue-400' :
-                subscription.status === 'grace' ? 'bg-amber-500/10 text-amber-400' :
-                'bg-error/10 text-error'
-              }`}>
-                {subscription.status.toUpperCase()}
-              </span>
+              <span className="text-sm text-on-surface-variant">Plan Tier</span>
+              <span className="text-sm font-semibold capitalize text-on-surface">{subscription.tier || 'Standard'}</span>
             </div>
             {subscription.trial_ends_at && (
               <div className="flex items-center justify-between">
@@ -133,6 +139,11 @@ export default function Alerts() {
                 <span className="text-sm text-on-surface-variant">Grace Period Ends</span>
                 <span className="text-sm font-medium">{new Date(subscription.grace_ends_at).toLocaleDateString()}</span>
               </div>
+            )}
+            {subscription.status !== 'active' && !isAdmin && (
+              <p className="text-xs text-on-surface-variant pt-2 border-t border-outline-variant/60">
+                Contact your pharmacy administrator if subscription updates or renewals are needed.
+              </p>
             )}
           </div>
         </div>

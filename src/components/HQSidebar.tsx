@@ -23,7 +23,7 @@ interface HQSidebarProps {
 export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useI18n();
+  const { lang, setLang, t } = useI18n();
 
   const NAV = [
     { label: t("hq.sidebar.overview"),       href: "/hq",                icon: "dashboard" },
@@ -92,7 +92,23 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
         })}
       </div>
 
-      <div className="px-2 mt-auto pt-2 border-t border-outline-variant shrink-0 bg-surface-container-low">
+      <div className="px-2 mt-auto pt-2 border-t border-outline-variant shrink-0 bg-surface-container-low flex flex-col gap-1">
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">translate</span>
+          <div className="flex gap-0.5 bg-surface-container-highest rounded p-0.5">
+            {(["EN", "SW"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                className={`px-2.5 py-0.5 text-[11px] font-label-md rounded transition-colors ${
+                  lang === l ? "bg-primary text-on-primary font-bold" : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 w-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-75 rounded-md"

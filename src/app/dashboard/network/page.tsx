@@ -122,7 +122,7 @@ export default async function NetworkPage() {
         </header>
 
         <main className="flex-grow pt-16 flex">
-          <div className="flex-1 bg-surface-container-low relative min-h-[calc(100vh-4rem)]">
+          <div className="flex-1 bg-surface-container-low relative h-[calc(100vh-4rem)]">
             <CervosMap center={center as [number, number]} zoom={11} markers={markers} className="w-full h-full" />
             {markers.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center bg-surface/70 backdrop-blur-[1px] pointer-events-none">

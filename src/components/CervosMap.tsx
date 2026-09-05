@@ -118,6 +118,11 @@ export default function CervosMap({
         zoomControl: true,
         attributionControl: true,
         scrollWheelZoom: true,
+        dragging: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        boxZoom: true,
+        keyboard: true,
       });
 
       map.on("click", (e) => {

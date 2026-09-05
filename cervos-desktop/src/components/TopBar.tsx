@@ -38,10 +38,12 @@ export default function TopBar() {
 
   function getStatusLabel(status: string): string {
     switch (status) {
-      case 'active': return 'Active'
-      case 'trial': return 'Trial'
-      case 'past_due': return 'Past Due'
-      case 'inactive': return 'Inactive'
+      case 'active': return t('status.active')
+      case 'trial': return t('status.trial')
+      case 'grace': return t('status.grace')
+      case 'past_due': return t('status.past_due')
+      case 'inactive': return t('status.inactive')
+      case 'locked': return t('status.locked')
       default: return status
     }
   }
@@ -68,7 +70,7 @@ export default function TopBar() {
 
         <button
           onClick={toggleLocale}
-          title={locale === 'en' ? 'Switch to Swahili' : 'Switch to English'}
+          title={locale === 'en' ? t('topbar.switch_sw') : t('topbar.switch_en')}
           className="p-2 rounded-lg hover:bg-outline-variant/50 transition-colors"
         >
           <span className="material-symbols-outlined text-xl text-on-surface-variant">

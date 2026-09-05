@@ -195,6 +195,20 @@
   height: 100%;
   width: 100%;
   background: #111318;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.leaflet-container.leaflet-drag-target {
+  cursor: grabbing;
+}
+
+/* Tile images are decorative — don't let them swallow pointer/drag events */
+.leaflet-tile-container img,
+.leaflet-tile {
+  pointer-events: none !important;
 }
 
 /* Dark mode filter for OpenStreetMap raster tiles (no API key required) */
