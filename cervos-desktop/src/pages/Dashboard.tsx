@@ -41,16 +41,14 @@ export default function Dashboard() {
   }, [])
 
   async function loadData() {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toDateString()
     const sales = await queryDb(
-      `SELECT s.*, br.currency FROM sales s
-       LEFT JOIN branches br ON br.id = s.branch_id
-       ORDER BY s.created_at DESC LIMIT 50`
+      `SELECT * FROM sales ORDER BY created_at DESC LIMIT 50`
     )
     const batches = await queryDb('SELECT * FROM batches')
 
     const todaySales = sales.filter(
-      (s: any) => s.created_at?.slice(0, 10) === today
+      (s: any) => s.created_at && new Date(s.created_at).toDateString() === today
     )
     const todayRevenue = todaySales.reduce(
       (sum: number, s: any) => sum + (s.total || 0),

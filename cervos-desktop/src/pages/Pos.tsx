@@ -20,6 +20,15 @@ interface CartItem {
   unit_price: number;
 }
 
+interface CompletedSale {
+  receiptNumber: string;
+  total: number;
+  tender: number;
+  change: number;
+  paymentMethod: string;
+  createdAt: string;
+}
+
 const PAYMENT_METHODS = ["cash", "card", "mobile_money", "insurance"];
 
 export default function Pos() {
@@ -35,6 +44,8 @@ export default function Pos() {
   const [taxRate, setTaxRate] = useState(10);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
+  const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -77,6 +88,7 @@ export default function Pos() {
         (c) => c.batch.id === item.batch.id
       );
       if (existing) {
+        if (existing.quantity >= item.batch.quantity) return prev;
         return prev.map((c) =>
           c.batch.id === item.batch.id
             ? { ...c, quantity: c.quantity + 1 }
@@ -144,11 +156,30 @@ export default function Pos() {
       prev
         .map((item) =>
           item.batch.id === batchId
-            ? { ...item, quantity: Math.max(0, item.quantity + delta) }
+            ? { ...item, quantity: Math.min(item.batch.quantity, Math.max(0, item.quantity + delta)) }
             : item
         )
         .filter((item) => item.quantity > 0)
     );
+  }
+
+  const availableItems = batches
+    .filter((batch) => batch.quantity > 0)
+    .map((batch) => ({ batch, product: products.find((product) => product.id === batch.product_id) }))
+    .filter((item): item is { batch: Batch; product: Product } => Boolean(item.product))
+
+  const normalizedSearch = searchQuery.trim().toLowerCase()
+  const matchingItems = normalizedSearch
+    ? availableItems.filter(({ product }) =>
+        [product.generic_name, product.brand_name, product.barcode]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+      )
+    : availableItems
+
+  function addAvailableItem(item: { batch: Batch; product: Product }) {
+    addToCart({ batch: item.batch, product: item.product, quantity: 1, unit_price: item.batch.sale_price })
+    setSearchQuery('')
   }
 
   function removeFromCart(batchId: string) {
@@ -175,6 +206,8 @@ export default function Pos() {
   async function processSale() {
     if (cart.length === 0 || isProcessing) return;
 
+    setSaleError(null);
+
     const block = await checkSubscriptionBlocked();
     if (block.blocked) {
       alert(`Cannot process sale: ${block.reason || "subscription blocked"}`);
@@ -185,6 +218,8 @@ export default function Pos() {
     try {
       const branchResult = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
       const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : null
+      if (!branchId) throw new Error('No pharmacy branch is linked to this POS. Link the branch in Settings before recording a sale.')
+      if (!currentOperator) throw new Error('No operator is signed in. Sign in again before recording a sale.')
 
       const saleId = generateId();
       const receiptId = generateId();
@@ -256,10 +291,19 @@ export default function Pos() {
       setTenderAmount("");
       setDiscount("0");
       loadData();
+      setCompletedSale({
+        receiptNumber,
+        total,
+        tender,
+        change: getChange(),
+        paymentMethod,
+        createdAt: now,
+      });
 
       processSyncQueue().catch(console.error);
     } catch (err) {
       console.error("Sale processing failed:", err);
+      setSaleError(err instanceof Error ? err.message : 'Sale could not be saved. No receipt was generated.');
     } finally {
       setIsProcessing(false);
     }
@@ -269,6 +313,25 @@ export default function Pos() {
     <>
       {showScanner && (
         <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setShowScanner(false)} />
+      )}
+      {completedSale && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface-base p-6 shadow-xl">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-5xl text-secondary">check_circle</span>
+              <h2 className="mt-2 font-headline text-2xl font-bold">Sale completed</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Transaction receipt</p>
+            </div>
+            <div className="mt-6 space-y-3 rounded-xl bg-surface p-4 text-sm">
+              <div className="flex justify-between"><span className="text-on-surface-variant">Receipt</span><span className="font-mono font-semibold">{completedSale.receiptNumber}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Date</span><span>{new Date(completedSale.createdAt).toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Payment</span><span>{completedSale.paymentMethod.replace('_', ' ').toUpperCase()}</span></div>
+              <div className="flex justify-between border-t border-outline-variant pt-3 text-lg font-bold"><span>Total</span><span>TZS {completedSale.total.toLocaleString()}</span></div>
+              {completedSale.tender > 0 && <div className="flex justify-between"><span className="text-on-surface-variant">Change</span><span>TZS {completedSale.change.toLocaleString()}</span></div>}
+            </div>
+            <button type="button" onClick={() => setCompletedSale(null)} className="mt-6 w-full rounded-lg bg-primary py-3 font-semibold text-white">Done</button>
+          </div>
+        </div>
       )}
       <div className="flex h-full">
         <div className="flex-1 flex flex-col p-6">
@@ -295,7 +358,7 @@ export default function Pos() {
               </button>
             </div>
           </div>
-          <div className="w-64">
+          <div className="w-64 relative">
             <input
               type="text"
               value={searchQuery}
@@ -304,15 +367,64 @@ export default function Pos() {
               placeholder="Search products..."
               className="w-full px-4 py-3 rounded-lg border border-outline-variant bg-surface-base focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             />
+            {normalizedSearch && (
+              <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-outline-variant bg-surface-base shadow-lg">
+                {matchingItems.length > 0 ? matchingItems.slice(0, 6).map((item) => (
+                  <button
+                    key={item.batch.id}
+                    type="button"
+                    onClick={() => addAvailableItem(item)}
+                    className="w-full px-3 py-2 text-left hover:bg-primary/10 border-b border-outline-variant last:border-b-0"
+                  >
+                    <span className="block text-sm font-medium">{item.product.generic_name}</span>
+                    <span className="block text-xs text-on-surface-variant">
+                      {item.product.brand_name || 'Generic'} · TZS {item.batch.sale_price.toLocaleString()} · {item.batch.quantity} in stock
+                    </span>
+                  </button>
+                )) : (
+                  <p className="px-3 py-3 text-sm text-on-surface-variant">No in-stock products match your search.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex-1 overflow-auto bg-surface-base border border-outline-variant rounded-xl">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-on-surface-variant">
-              <span className="material-symbols-outlined text-6xl">receipt_long</span>
-              <p className="mt-2 text-lg font-medium">No items in cart</p>
-              <p className="text-sm">Scan a barcode or search for products</p>
+            <div className="h-full overflow-y-auto p-5">
+              <div className="flex flex-col items-center justify-center py-8 text-on-surface-variant">
+                <span className="material-symbols-outlined text-5xl">point_of_sale</span>
+                <p className="mt-2 text-lg font-medium">Choose products to start a sale</p>
+                <p className="text-sm">Search by name or barcode, scan an item, or select from available inventory.</p>
+              </div>
+              {matchingItems.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {matchingItems.map((item) => (
+                    <button
+                      key={item.batch.id}
+                      type="button"
+                      onClick={() => addAvailableItem(item)}
+                      className="rounded-xl border border-outline-variant p-4 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+                    >
+                      <p className="font-semibold text-on-surface">{item.product.generic_name}</p>
+                      <p className="text-sm text-on-surface-variant">{item.product.brand_name || 'Generic'}</p>
+                      <div className="mt-3 flex items-center justify-between text-sm">
+                        <span className="font-semibold text-primary">TZS {item.batch.sale_price.toLocaleString()}</span>
+                        <span className="text-on-surface-variant">{item.batch.quantity} in stock</span>
+                      </div>
+                      <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+                        <span className="material-symbols-outlined text-base">add_shopping_cart</span>
+                        Add to cart
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-outline-variant p-6 text-center text-on-surface-variant">
+                  <p className="font-medium">No saleable stock is available.</p>
+                  <p className="mt-1 text-sm">Add a product with a stock quantity greater than zero in Inventory before making a sale.</p>
+                </div>
+              )}
             </div>
           ) : (
             <table className="w-full">
@@ -381,6 +493,7 @@ export default function Pos() {
         <h2 className="font-headline text-lg font-bold text-on-surface mb-4">
           Payment
         </h2>
+        {saleError && <div className="mb-4 rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">{saleError}</div>}
 
         <div className="space-y-3 mb-4">
           <div>
