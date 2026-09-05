@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { queryDb, executeDb, generateId, nowIso } from "../lib/database";
 import { queueForSync, runSyncCycle } from "../lib/sync";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
@@ -15,6 +16,7 @@ declare global {
 }
 
 export default function Inventory() {
+  const navigate = useNavigate();
   const { isAdmin, permissions } = useAuthStore()
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -107,15 +109,25 @@ export default function Inventory() {
             {products.length} products Â· {batches.filter((b) => b.quantity > 0).length} batches in stock
           </p>
         </div>
-        {isAdmin && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity"
+            type="button"
+            onClick={() => navigate('/pos')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary font-semibold hover:bg-primary/10 transition-colors"
           >
-            <span className="material-symbols-outlined">add</span>
-            Add Product
+            <span className="material-symbols-outlined">point_of_sale</span>
+            Make Sale
           </button>
-        )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity"
+            >
+              <span className="material-symbols-outlined">add</span>
+              Add Product
+            </button>
+          )}
+        </div>
       </div>
 
       {getLowStockProducts().length > 0 && (
@@ -461,9 +473,9 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
       {showScanner && (
         <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setShowScanner(false)} />
       )}
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-surface-base rounded-2xl shadow-xl w-full max-w-md p-6">
-          <div className="flex items-center justify-between mb-6">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-surface-base rounded-2xl shadow-xl w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-6 pb-4 shrink-0">
             <h2 className="font-headline text-xl font-bold text-on-surface">
               {product ? "Edit Product" : "Add Product"}
             </h2>
@@ -475,7 +487,8 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-6 space-y-4">
             <div>
               <label className={labelClass}>Generic Name *</label>
               <input
@@ -640,13 +653,14 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             </label>
           </div>
 
-          <div className="flex gap-3 pt-4">
+            </div>
+          <div className="shrink-0 flex gap-3 border-t border-outline-variant px-6 py-4 bg-surface-base">
             <button
               type="button"
               onClick={onClose}
               className="flex-1 py-2.5 rounded-md border border-outline-variant text-on-surface font-medium hover:bg-outline-variant/30 transition-colors"
             >
-              Cancel
+              Back
             </button>
             <button
               type="submit"
